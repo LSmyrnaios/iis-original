@@ -55,14 +55,13 @@ WHERE fundingclass1="RCUK" and middle = grantid
 
 union all
 --DFG
-select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8,'textsnippet',j2s(prev,middle,next)) as C1, docid, id, fundingclass1, grantid from  
-(setschema 'docid,prev,middle,next' select c1, textwindow2s(regexpr("\n",filterstopwords(keywords(c2)),"\s"),10,2,7,"\w{3}\s\d{1,4}" ) from pubs where c2 is not null), grants 
-where lower(regexpr("\b(\w{3}\s\d{1,4})\b",middle)) = grantid and 
-regexprmatches("support|project|grant|fund|thanks|agreement|research|acknowledge|centre|center|nstitution|program|priority|dfg|german|dutch|deutche",lower(j2s(prev,middle,next))) group by docid, id
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8,'textsnippet', prev||" "||middle||" "||next) as C1, docid, id, fundingclass1, grantid from
+(setschema 'docid,prev,middle,next' select c1, textwindow2s(filterstopwords(keywords(c2)),10,2,7,"\w{3}\s\d{1,4}") from pubs where c2 is not null), grants
+where lower(regexpr("\b(\w{3}\s\d{1,4})\b",middle)) = grantid and
+regexprmatches("support|project|grant|fund|thanks|agreement|research|acknowledge|centre|center|nstitution|program|priority|dfg|german|dutch|deutche",lower(prev||" "||next)) group by docid, id
 --DFG
 
 union all
-
 -- Canadian funders
 select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8, 'textsnippet', textsnippet) as C1, docid, id, fundingclass1, grantid
 from (
@@ -70,7 +69,7 @@ from (
                        when regexprmatches(".*(?:(?:NSERC|CRSNG)|(?i)(?:nat(?:ural|ional) science(?:s)?(?:\sengineering(?:\sresearch)?|\sresearch) co(?:u)?n(?:c|se)(?:i)?l|conseil(?:s)? recherche(?:s)? science(?:s)? naturel(?:les)?(?:\sg(?:e|é)nie)? canada)).*", prev||" "||middle||" "||next) then (select id from grants where fundingclass1 = 'NSERC')
                        when regexprmatches(".*(?:(?:SSHRC|CRSH|SSRCC)|(?i)(?:social science(?:s)?|conseil(?:s)? recherche(?:s)?(?:\ssciences humaines)? canada|humanities\sresearch)).*", prev||" "||middle||" "||next) then (select id from grants where fundingclass1 = 'SSHRC')
                        else 'canadian_unspecified_id'
-                  end as id, "unidentified" as grantid, "Canadian" as fundingclass1, (prev||" "||middle||" "||next) as textsnippet
+                  end as id, "unidentified" as grantid, "Canadian" as fundingclass1, (prev||" <<< "||middle||" >>> "||next) as textsnippet
     from
         (setschema 'docid,prev,middle,next' select c1, textwindow2s(filterstopwords(keywords(c2)), 15,1,15, "^(?:(?:(?:CIHR|IRSC)|(?:NSERC|CRSNG)|(?:SSHRC|CRSH))|(?i)(?:co(?:(?:un(?:cil|sel))|(?:nseil(?:s)?))|canad(?:a|ian)))$") from pubs where c2 is not null)
     where
