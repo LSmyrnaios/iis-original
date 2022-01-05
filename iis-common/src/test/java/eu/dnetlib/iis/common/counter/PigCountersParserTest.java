@@ -1,19 +1,16 @@
 package eu.dnetlib.iis.common.counter;
 
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
+import eu.dnetlib.iis.common.counter.PigCounters.JobCounters;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.util.Map;
+
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertEquals;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Map;
-
-import org.apache.commons.io.IOUtils;
-import org.junit.Test;
-
-import eu.dnetlib.iis.common.InfoSpaceConstants;
-import eu.dnetlib.iis.common.counter.PigCounters.JobCounters;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * @author madryk
@@ -30,7 +27,8 @@ public class PigCountersParserTest {
         
         // given
         
-        String pigCountersJson = readFileFromClasspath("/eu/dnetlib/iis/common/report/pigCounters.json");
+        String pigCountersJson = ClassPathResourceProvider
+                .getResourceContent("/eu/dnetlib/iis/common/report/pigCounters.json");
         
         // execute
         
@@ -110,17 +108,6 @@ public class PigCountersParserTest {
         JobCounters jobCounters4 = pigCounters.getJobCounters("job_1467867518322_6690");
         assertThat(jobCounters4.getAliases(), containsInAnyOrder("documentMetaFiltered", "joinedDocumentMeta"));
         assertThat(jobCounters4.getCountersCount(), is(21));
-        
-    }
-    
-    
-    //------------------------ PRIVATE --------------------------
-    
-    private String readFileFromClasspath(String classpath) throws IOException {
-        
-        try (InputStream input = getClass().getResourceAsStream(classpath)) {
-            return IOUtils.toString(input, InfoSpaceConstants.ENCODING_UTF8);
-        }
         
     }
 }

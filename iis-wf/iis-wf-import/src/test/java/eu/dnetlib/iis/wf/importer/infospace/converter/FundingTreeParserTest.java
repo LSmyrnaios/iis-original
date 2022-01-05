@@ -1,15 +1,12 @@
 package eu.dnetlib.iis.wf.importer.infospace.converter;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
+import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 
-import org.apache.commons.io.IOUtils;
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * @author mhorst
@@ -39,7 +36,8 @@ public class FundingTreeParserTest {
     
     // ------------------------ PRIVATE --------------------------
 
-    private String readFundingTree() throws IOException {
-        return IOUtils.toString(getClass().getResourceAsStream("/eu/dnetlib/iis/wf/importer/converter/fundingclass_example.xml"), "utf8");
+    private String readFundingTree() {
+        return ClassPathResourceProvider
+                .getResourceContent("/eu/dnetlib/iis/wf/importer/converter/fundingclass_example.xml");
     }
 }

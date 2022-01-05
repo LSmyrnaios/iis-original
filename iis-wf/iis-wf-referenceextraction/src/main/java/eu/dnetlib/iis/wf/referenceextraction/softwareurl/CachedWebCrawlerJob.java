@@ -2,15 +2,17 @@ package eu.dnetlib.iis.wf.referenceextraction.softwareurl;
 
 import java.util.Map;
 
+import eu.dnetlib.iis.common.fault.FaultUtils;
+import eu.dnetlib.iis.wf.referenceextraction.FacadeContentRetriever;
+import eu.dnetlib.iis.wf.referenceextraction.FacadeContentRetrieverResponse;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.Optional;
-import org.apache.spark.storage.StorageLevel;
 
 import com.beust.jcommander.DynamicParameter;
 import com.beust.jcommander.JCommander;
@@ -34,7 +36,6 @@ import eu.dnetlib.iis.common.spark.JavaSparkContextFactory;
 import eu.dnetlib.iis.metadataextraction.schemas.DocumentText;
 import eu.dnetlib.iis.referenceextraction.softwareurl.schemas.DocumentToSoftwareUrl;
 import eu.dnetlib.iis.referenceextraction.softwareurl.schemas.DocumentToSoftwareUrlWithSource;
-import eu.dnetlib.iis.wf.importer.ImportWorkflowRuntimeParameters;
 import eu.dnetlib.iis.wf.importer.facade.ServiceFacadeUtils;
 import pl.edu.icm.sparkutils.avro.SparkAvroLoader;
 import pl.edu.icm.sparkutils.avro.SparkAvroSaver;
@@ -44,23 +45,17 @@ import scala.Tuple2;
  * Retrieves HTML pages pointed by softwareURL field from {@link DocumentToSoftwareUrl}.
  * For each {@link DocumentToSoftwareUrl} input record builds {@link DocumentToSoftwareUrlWithSource} if the page was available.
  * Stores results in cache for further usage.
- * @author mhorst
- *
  */
 public class CachedWebCrawlerJob {
     
     private static SparkAvroLoader avroLoader = new SparkAvroLoader();
     private static SparkAvroSaver avroSaver = new SparkAvroSaver();
     
-    public static final Logger log = Logger.getLogger(CachedWebCrawlerJob.class);
-    
     private static final String COUNTER_PROCESSED_TOTAL = "processing.referenceExtraction.softwareUrl.webcrawl.processed.total";
     
     private static final String COUNTER_PROCESSED_FAULT = "processing.referenceExtraction.softwareUrl.webcrawl.processed.fault";
     
     private static final String COUNTER_FROMCACHE_TOTAL = "processing.referenceExtraction.softwareUrl.webcrawl.fromCache.total";
-    
-    private static final StorageLevel CACHE_STORAGE_DEFAULT_LEVEL = StorageLevel.DISK_ONLY();
     
     //------------------------ LOGIC --------------------------
 
@@ -77,8 +72,9 @@ public class CachedWebCrawlerJob {
             HdfsUtils.remove(hadoopConf, params.getOutputFaultPath());
             HdfsUtils.remove(hadoopConf, params.getOutputReportPath());
 
-            ContentRetriever contentRetriever = ServiceFacadeUtils
-                    .instantiate(prepareFacadeParameters(params.contentRetrieverFactoryClassName, params.contentRetrieverParams));
+            FacadeContentRetriever<String, String> contentRetriever = ServiceFacadeUtils
+                    .instantiate(params.httpServiceFacadeFactoryClassName, params.httpServiceFacadeParams);
+
             int numberOfPartitionsForCrawling = params.numberOfPartitionsForCrawling;
             int numberOfEmittedFiles = params.numberOfEmittedFiles;
             
@@ -93,70 +89,129 @@ public class CachedWebCrawlerJob {
             String existingCacheId = cacheManager.getExistingCacheId(hadoopConf, cacheRootDir);
             
             // skipping already extracted
+
+            //TODO: https://github.com/openaire/iis/issues/1238
             JavaRDD<DocumentText> cachedSources = DocumentTextCacheStorageUtils.getRddOrEmpty(sc, avroLoader, cacheRootDir,
-                    existingCacheId, CacheRecordType.text, DocumentText.class);
-            
-            JavaPairRDD<CharSequence, CharSequence> cacheByUrl = cachedSources.mapToPair(x -> new Tuple2<>(x.getId(), x.getText()));
-            JavaPairRDD<CharSequence, DocumentToSoftwareUrl> inputByUrl = documentToSoftwareUrl.mapToPair(x -> new Tuple2<>(x.getSoftwareUrl(), x));
-            JavaPairRDD<CharSequence, Tuple2<DocumentToSoftwareUrl, Optional<CharSequence>>> inputJoinedWithCache = inputByUrl.leftOuterJoin(cacheByUrl);
+                    existingCacheId, CacheRecordType.text, DocumentText.class)
+                    .filter(x -> StringUtils.isNotBlank(x.getText()));
+            JavaRDD<Fault> cachedFaults = DocumentTextCacheStorageUtils.getRddOrEmpty(sc, avroLoader, cacheRootDir,
+                    existingCacheId, CacheRecordType.fault, Fault.class);
 
-            JavaRDD<DocumentToSoftwareUrl> toBeProcessed = inputJoinedWithCache.filter(x -> !x._2._2.isPresent()).values().map(x -> x._1);
-            JavaRDD<DocumentToSoftwareUrlWithSource> entitiesReturnedFromCache = inputJoinedWithCache.filter(x -> x._2._2.isPresent()).values().map(x -> attachSource(x._1, x._2.get()));
-            entitiesReturnedFromCache.persist(CACHE_STORAGE_DEFAULT_LEVEL);
-            
-            Tuple2<JavaRDD<DocumentText>, JavaRDD<Fault>> returnedFromWebcrawlTuple = WebCrawlerUtils
-                    .obtainSources(toBeProcessed, contentRetriever, numberOfPartitionsForCrawling);
+            JavaPairRDD<CharSequence, Optional<DocumentText>> cacheByUrl = cachedSources
+                    .mapToPair(x -> new Tuple2<>(x.getId(), Optional.of(x)))
+                    .union(cachedFaults.mapToPair(x -> new Tuple2<>(x.getInputObjectId(), Optional.empty())));
+            JavaPairRDD<CharSequence, DocumentToSoftwareUrl> inputByUrl = documentToSoftwareUrl
+                    .mapToPair(x -> new Tuple2<>(x.getSoftwareUrl(), x));
+            JavaPairRDD<CharSequence, Tuple2<DocumentToSoftwareUrl, Optional<Optional<DocumentText>>>> inputJoinedWithCache =
+                    inputByUrl.leftOuterJoin(cacheByUrl);
 
+            JavaRDD<DocumentToSoftwareUrl> toBeProcessed = inputJoinedWithCache
+                    .filter(x -> !x._2._2.isPresent()).values().map(x -> x._1);
+            JavaRDD<DocumentToSoftwareUrlWithSource> entitiesReturnedFromCache = inputJoinedWithCache
+                    .filter(x -> x._2._2.isPresent() && x._2._2.get().isPresent())
+                    .values().map(x -> attachSource(x._1, x._2.get().get().getText()));
+
+            JavaPairRDD<CharSequence, FacadeContentRetrieverResponse<String>> returnedFromRemoteService =
+                    retrieveFromRemoteService(toBeProcessed, numberOfPartitionsForCrawling, contentRetriever);
+            returnedFromRemoteService.cache();
+
+            JavaRDD<DocumentText> retrievedSourcesToBeCached = mapContentRetrieverResponsesToDocumentTextForCache(
+                    returnedFromRemoteService);
+            JavaRDD<Fault> faultsToBeCached = mapContentRetrieverResponsesToFaultForCache(
+                    returnedFromRemoteService);
+            if (!retrievedSourcesToBeCached.isEmpty() || !faultsToBeCached.isEmpty()) {
+                // storing new cache entry
+                DocumentTextCacheStorageUtils.storeInCache(avroSaver, cachedSources.union(retrievedSourcesToBeCached),
+                        cachedFaults.union(faultsToBeCached), cacheRootDir, lockManager, cacheManager, hadoopConf,
+                        numberOfEmittedFiles);
+            }
+
+            JavaRDD<DocumentText> retrievedSources  = mapContentRetrieverResponsesToDocumentTextForOutput(
+                    returnedFromRemoteService);
+            JavaRDD<Fault> faults = mapContentRetrieverResponsesToFaultForOutput(
+                    returnedFromRemoteService);
             JavaRDD<DocumentToSoftwareUrlWithSource> webcrawledEntities;
             JavaRDD<DocumentToSoftwareUrlWithSource> entitiesToBeWritten;
-            
-            if (!returnedFromWebcrawlTuple._1.isEmpty()) {
-                // will be written in two output datastores: cache and result
-                returnedFromWebcrawlTuple._1.persist(CACHE_STORAGE_DEFAULT_LEVEL);
-                returnedFromWebcrawlTuple._2.persist(CACHE_STORAGE_DEFAULT_LEVEL);
-                
-                JavaRDD<Fault> cachedFaults = DocumentTextCacheStorageUtils.getRddOrEmpty(sc, avroLoader, cacheRootDir,
-                        existingCacheId, CacheRecordType.fault, Fault.class);
-                
-                // storing new cache entry
-                DocumentTextCacheStorageUtils.storeInCache(avroSaver, cachedSources.union(returnedFromWebcrawlTuple._1), 
-                        cachedFaults.union(returnedFromWebcrawlTuple._2), 
-                        cacheRootDir, lockManager, cacheManager, hadoopConf, numberOfEmittedFiles);
-                
-                // merging final results
-                webcrawledEntities = produceEntitiesToBeStored(toBeProcessed, returnedFromWebcrawlTuple._1);
-                webcrawledEntities.persist(CACHE_STORAGE_DEFAULT_LEVEL);
+            if (!retrievedSources.isEmpty()){
+                webcrawledEntities = produceEntitiesToBeStored(toBeProcessed, retrievedSources);
                 entitiesToBeWritten = entitiesReturnedFromCache.union(webcrawledEntities);
-                
             } else {
                 webcrawledEntities = sc.emptyRDD();
                 entitiesToBeWritten = entitiesReturnedFromCache;
             }
             
             // store final results
-            
-            JavaRDD<Fault> faultsToBeStored = produceFaultToBeStored(toBeProcessed, returnedFromWebcrawlTuple._2);
-            faultsToBeStored.cache();
-            
+            JavaRDD<Fault> faultsToBeStored = produceFaultToBeStored(toBeProcessed, faults);
+            long entitiesReturnedFromCacheCount = entitiesReturnedFromCache.count();
+            long faultsReturnedFromCacheCount = inputJoinedWithCache
+                    .filter(x -> x._2._2.isPresent() && !x._2._2.get().isPresent())
+                    .count();
+            long processedEntitiesCount = webcrawledEntities.count();
+            long processedFaultsCount = faults.mapToPair(e -> new Tuple2<>(e.getInputObjectId(), 1))
+                    .join(inputByUrl)
+                    .count();
             storeInOutput(
                     entitiesToBeWritten, 
                     //notice: we do not propagate faults from cache, only new faults are written
                     faultsToBeStored, 
-                    generateReportEntries(sc, entitiesReturnedFromCache, webcrawledEntities, faultsToBeStored),
+                    generateReportEntries(sc, entitiesReturnedFromCacheCount, faultsReturnedFromCacheCount,
+                            processedEntitiesCount, processedFaultsCount),
                     new OutputPaths(params), numberOfEmittedFiles);
         }
     }
     
     //------------------------ PRIVATE --------------------------
 
-    private static JavaRDD<ReportEntry> generateReportEntries(JavaSparkContext sparkContext, 
-            JavaRDD<DocumentToSoftwareUrlWithSource> fromCacheEntities, JavaRDD<DocumentToSoftwareUrlWithSource> processedEntities, JavaRDD<Fault> processedFaults) {
+    private static JavaPairRDD<CharSequence, FacadeContentRetrieverResponse<String>> retrieveFromRemoteService(JavaRDD<DocumentToSoftwareUrl> documentToSoftwareUrls,
+                                                                                                               int numberOfPartitionsForCrawling,
+                                                                                                               FacadeContentRetriever<String, String> contentRetriever) {
+        JavaRDD<CharSequence> uniqueSoftwareUrls = documentToSoftwareUrls.map(DocumentToSoftwareUrl::getSoftwareUrl).distinct();
+        return uniqueSoftwareUrls
+                .repartition(numberOfPartitionsForCrawling)
+                .mapToPair(url -> new Tuple2<>(url, contentRetriever.retrieveContent(url.toString())));
+    }
 
-        ReportEntry fromCacheEntitiesCounter = ReportEntryFactory.createCounterReportEntry(COUNTER_FROMCACHE_TOTAL, fromCacheEntities.count());
-        ReportEntry processedEnttiesCounter = ReportEntryFactory.createCounterReportEntry(COUNTER_PROCESSED_TOTAL, processedEntities.count());
-        ReportEntry processedFaultsCounter = ReportEntryFactory.createCounterReportEntry(COUNTER_PROCESSED_FAULT, processedFaults.count());
-        
-        return sparkContext.parallelize(Lists.newArrayList(fromCacheEntitiesCounter, processedEnttiesCounter, processedFaultsCounter));
+    private static JavaRDD<DocumentText> mapContentRetrieverResponsesToDocumentTextForCache(
+            JavaPairRDD<CharSequence, FacadeContentRetrieverResponse<String>> returnedFromRemoteService) {
+        return returnedFromRemoteService
+                .filter(e -> FacadeContentRetrieverResponse.isSuccess(e._2))
+                .map(e -> DocumentText.newBuilder().setId(e._1).setText(e._2.getContent()).build());
+    }
+
+    private static JavaRDD<Fault> mapContentRetrieverResponsesToFaultForCache(
+            JavaPairRDD<CharSequence, FacadeContentRetrieverResponse<String>> returnedFromRemoteService) {
+        return returnedFromRemoteService
+                .filter(e -> e._2.getClass().equals(FacadeContentRetrieverResponse.PersistentFailure.class))
+                .map(e -> FaultUtils.exceptionToFault(e._1, e._2.getException(), null));
+    }
+
+    private static JavaRDD<DocumentText> mapContentRetrieverResponsesToDocumentTextForOutput(
+            JavaPairRDD<CharSequence, FacadeContentRetrieverResponse<String>> returnedFromRemoteService) {
+        return returnedFromRemoteService
+                .filter(e -> FacadeContentRetrieverResponse.isSuccess(e._2))
+                .map(e -> DocumentText.newBuilder().setId(e._1).setText(e._2.getContent()).build());
+    }
+
+    private static JavaRDD<Fault> mapContentRetrieverResponsesToFaultForOutput(
+            JavaPairRDD<CharSequence, FacadeContentRetrieverResponse<String>> returnedFromRemoteService) {
+        return returnedFromRemoteService
+                .filter(e -> FacadeContentRetrieverResponse.isFailure(e._2))
+                .map(e -> FaultUtils.exceptionToFault(e._1, e._2.getException(), null));
+    }
+
+    private static JavaRDD<ReportEntry> generateReportEntries(JavaSparkContext sparkContext,
+                                                              long fromCacheEntitiesCount,
+                                                              long fromCacheFaultsCount,
+                                                              long processedEntitiesCount,
+                                                              long processedFaultsCount) {
+        ReportEntry fromCacheTotalCounter = ReportEntryFactory.createCounterReportEntry(COUNTER_FROMCACHE_TOTAL,
+                fromCacheEntitiesCount + fromCacheFaultsCount);
+        ReportEntry processedTotalCounter = ReportEntryFactory.createCounterReportEntry(COUNTER_PROCESSED_TOTAL,
+                processedEntitiesCount + processedFaultsCount);
+        ReportEntry processedFaultsCounter = ReportEntryFactory.createCounterReportEntry(COUNTER_PROCESSED_FAULT,
+                processedFaultsCount);
+
+        return sparkContext.parallelize(Lists.newArrayList(fromCacheTotalCounter, processedTotalCounter, processedFaultsCounter));
     }
     
     /**
@@ -203,9 +258,9 @@ public class CachedWebCrawlerJob {
     
     private static void storeInOutput(JavaRDD<DocumentToSoftwareUrlWithSource> entities, 
             JavaRDD<Fault> faults, JavaRDD<ReportEntry> reports, OutputPaths outputPaths, int numberOfEmittedFiles) {
-        avroSaver.saveJavaRDD(entities.coalesce(numberOfEmittedFiles), DocumentToSoftwareUrlWithSource.SCHEMA$, outputPaths.getResult());
-        avroSaver.saveJavaRDD(faults.coalesce(numberOfEmittedFiles), Fault.SCHEMA$, outputPaths.getFault());
-        avroSaver.saveJavaRDD(reports.coalesce(numberOfEmittedFiles), ReportEntry.SCHEMA$, outputPaths.getReport());
+        avroSaver.saveJavaRDD(entities.repartition(numberOfEmittedFiles), DocumentToSoftwareUrlWithSource.SCHEMA$, outputPaths.getResult());
+        avroSaver.saveJavaRDD(faults.repartition(numberOfEmittedFiles), Fault.SCHEMA$, outputPaths.getFault());
+        avroSaver.saveJavaRDD(reports.repartition(1), ReportEntry.SCHEMA$, outputPaths.getReport());
     }
     
     private static DocumentToSoftwareUrlWithSource attachSource(DocumentToSoftwareUrl record, CharSequence source) {
@@ -216,14 +271,7 @@ public class CachedWebCrawlerJob {
         builder.setSource(source);
         return builder.build();
     }
-    
-    private static Map<String, String> prepareFacadeParameters(String patentFacadeFactoryClassname, Map<String, String> facadeParams) {
-        Map<String, String> resultParams = Maps.newHashMap();
-        resultParams.put(ImportWorkflowRuntimeParameters.IMPORT_FACADE_FACTORY_CLASS, patentFacadeFactoryClassname);
-        resultParams.putAll(facadeParams);
-        return resultParams;
-    }
-    
+
     @Parameters(separators = "=")
     private static class WebCrawlerJobParameters extends CachedStorageJobParameters {
         
@@ -236,10 +284,10 @@ public class CachedWebCrawlerJob {
         @Parameter(names = "-numberOfPartitionsForCrawling", required = true)
         private int numberOfPartitionsForCrawling;
 
-        @Parameter(names = "-contentRetrieverFactoryClassName", required = true)
-        private String contentRetrieverFactoryClassName;
+        @Parameter(names = "-httpServiceFacadeFactoryClassName", required = true)
+        private String httpServiceFacadeFactoryClassName;
 
-        @DynamicParameter(names = "-D", description = "dynamic parameters related to content retriever", required = false)
-        private Map<String, String> contentRetrieverParams = Maps.newHashMap();
+        @DynamicParameter(names = "-D", description = "dynamic parameters related to http service facade", required = false)
+        private Map<String, String> httpServiceFacadeParams = Maps.newHashMap();
     }
 }

@@ -1,46 +1,46 @@
 package eu.dnetlib.iis.wf.export.actionmanager.entity.patent;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Objects;
-
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-
 import eu.dnetlib.dhp.schema.action.AtomicAction;
 import eu.dnetlib.dhp.schema.oaf.Publication;
 import eu.dnetlib.dhp.schema.oaf.Relation;
-import eu.dnetlib.iis.common.IntegrationTest;
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
+import eu.dnetlib.iis.common.SlowTest;
+import eu.dnetlib.iis.common.java.io.SequenceFileTextValueReader;
 import eu.dnetlib.iis.common.schemas.ReportEntry;
 import eu.dnetlib.iis.common.schemas.ReportEntryType;
 import eu.dnetlib.iis.common.utils.AvroTestUtils;
+import eu.dnetlib.iis.common.utils.IteratorUtils;
 import eu.dnetlib.iis.common.utils.JsonAvroTestUtils;
-import eu.dnetlib.iis.common.utils.ListTestUtils;
 import eu.dnetlib.iis.referenceextraction.patent.schemas.DocumentToPatent;
 import eu.dnetlib.iis.referenceextraction.patent.schemas.Patent;
-import eu.dnetlib.iis.wf.export.actionmanager.entity.AtomicActionSerDeUtils;
+import eu.dnetlib.iis.wf.export.actionmanager.AtomicActionDeserializationUtils;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import pl.edu.icm.sparkutils.test.SparkJob;
 import pl.edu.icm.sparkutils.test.SparkJobBuilder;
 import pl.edu.icm.sparkutils.test.SparkJobExecutor;
 
-@Category(IntegrationTest.class)
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+@SlowTest
 public class PatentExporterJobTest {
-    private ClassLoader cl = getClass().getClassLoader();
-    private SparkJobExecutor executor = new SparkJobExecutor();
-    private Path workingDir;
-    private Path inputDocumentToPatentDir;
-    private Path inputPatentDir;
-    private Path outputRelationDir;
-    private Path outputEntityDir;
-    private Path outputReportDir;
+
+    private final SparkJobExecutor executor = new SparkJobExecutor();
+
+    @TempDir
+    public Path workingDir;
+
+    private String inputDocumentToPatentPath;
+    private String inputPatentPath;
+    private String outputRelationPath;
+    private String outputEntityPath;
+    private String outputReportPath;
 
     private static final String INPUT_DOCUMENT_TO_PATENT_PATH =
             "eu/dnetlib/iis/wf/export/actionmanager/entity/patent/default/input/document_to_patent.json";
@@ -55,54 +55,37 @@ public class PatentExporterJobTest {
     private static final String PATENT_DATE_OF_COLLECTION = "2019-11-20T23:59";
     private static final String PATENT_EPO_URL_ROOT = "https://register.epo.org/application?number=";
 
-    @Before
-    public void before() throws IOException {
-        workingDir = Files.createTempDirectory("patent_exporter");
-        inputDocumentToPatentDir = workingDir.resolve("input").resolve("document_to_patent");
-        inputPatentDir = workingDir.resolve("input").resolve("patent");
-        outputRelationDir = workingDir.resolve("output").resolve("relation");
-        outputEntityDir = workingDir.resolve("output").resolve("entity");
-        outputReportDir = workingDir.resolve("output").resolve("report");
+    @BeforeEach
+    public void before() {
+        inputDocumentToPatentPath = workingDir.resolve("patent_exporter").resolve("input_document_to_patent").toString();
+        inputPatentPath = workingDir.resolve("patent_exporter").resolve("input_patent").toString();
+        outputRelationPath = workingDir.resolve("patent_exporter").resolve("output_relation").toString();
+        outputEntityPath = workingDir.resolve("patent_exporter").resolve("output_entity").toString();
+        outputReportPath = workingDir.resolve("patent_exporter").resolve("output_report").toString();
     }
 
-    @After
-    public void after() throws IOException {
-        FileUtils.deleteDirectory(workingDir.toFile());
-    }
-    
     @Test
     public void shouldNotExportEntitiesWhenConfidenceLevelIsBelowThreshold() throws IOException {
         //given
         AvroTestUtils.createLocalAvroDataStore(
-                JsonAvroTestUtils.readJsonDataStore(Objects.requireNonNull(cl.getResource(INPUT_DOCUMENT_TO_PATENT_PATH)).getFile(), DocumentToPatent.class),
-                inputDocumentToPatentDir.toString());
+                JsonAvroTestUtils.readJsonDataStore(
+                        ClassPathResourceProvider.getResourcePath(INPUT_DOCUMENT_TO_PATENT_PATH), DocumentToPatent.class),
+                inputDocumentToPatentPath);
         AvroTestUtils.createLocalAvroDataStore(
-                JsonAvroTestUtils.readJsonDataStore(Objects.requireNonNull(cl.getResource(INPUT_PATENT_PATH)).getFile(), Patent.class),
-                inputPatentDir.toString());
-        SparkJob sparkJob = buildSparkJob(0.99);
+                JsonAvroTestUtils.readJsonDataStore(ClassPathResourceProvider.getResourcePath(INPUT_PATENT_PATH), Patent.class),
+                inputPatentPath);
+        SparkJob sparkJob = buildSparkJob("0.99");
 
         //when
         executor.execute(sparkJob);
 
         //then
-        List<AtomicAction<Relation>> actualRelationActions = ListTestUtils
-                .readValues(outputRelationDir.toString(), text -> {
-                    try {
-                        return AtomicActionSerDeUtils.deserializeAction(text.toString());
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+        List<AtomicAction<Relation>> actualRelationActions = IteratorUtils.toList(SequenceFileTextValueReader.fromFile(outputRelationPath),
+                x -> AtomicActionDeserializationUtils.deserializeAction(x.toString()));
         assertEquals(0, actualRelationActions.size());
 
-        List<AtomicAction<Publication>> actualEntityActions = ListTestUtils
-                .readValues(outputEntityDir.toString(), text -> {
-                    try {
-                        return AtomicActionSerDeUtils.deserializeAction(text.toString());
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+        List<AtomicAction<Publication>> actualEntityActions = IteratorUtils.toList(SequenceFileTextValueReader.fromFile(outputEntityPath),
+                x -> AtomicActionDeserializationUtils.deserializeAction(x.toString()));
         assertEquals(0, actualEntityActions.size());
 
         assertCountersInReport(0, 0, 0);
@@ -112,40 +95,30 @@ public class PatentExporterJobTest {
     public void shouldExportEntitiesWhenConfidenceLevelIsAboveThreshold() throws IOException {
         //given
         AvroTestUtils.createLocalAvroDataStore(
-                JsonAvroTestUtils.readJsonDataStore(Objects.requireNonNull(cl.getResource(INPUT_DOCUMENT_TO_PATENT_PATH)).getFile(), DocumentToPatent.class),
-                inputDocumentToPatentDir.toString());
+                JsonAvroTestUtils.readJsonDataStore(
+                        ClassPathResourceProvider.getResourcePath(INPUT_DOCUMENT_TO_PATENT_PATH), DocumentToPatent.class),
+                inputDocumentToPatentPath);
         AvroTestUtils.createLocalAvroDataStore(
-                JsonAvroTestUtils.readJsonDataStore(Objects.requireNonNull(cl.getResource(INPUT_PATENT_PATH)).getFile(), Patent.class),
-                inputPatentDir.toString());
-        SparkJob sparkJob = buildSparkJob(0.5);
-        
+                JsonAvroTestUtils.readJsonDataStore(
+                        ClassPathResourceProvider.getResourcePath(INPUT_PATENT_PATH), Patent.class),
+                inputPatentPath);
+        SparkJob sparkJob = buildSparkJob("0.5");
+
         //when
         executor.execute(sparkJob);
 
         //then
         //relations
-        List<AtomicAction<Relation>> actualRelationActions = ListTestUtils
-                .readValues(outputRelationDir.toString(), text -> {
-                    try {
-                        return AtomicActionSerDeUtils.deserializeAction(text.toString());
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                });
+        List<AtomicAction<Relation>> actualRelationActions = IteratorUtils.toList(SequenceFileTextValueReader.fromFile(outputRelationPath),
+                x -> AtomicActionDeserializationUtils.deserializeAction(x.toString()));
         assertEquals(6, actualRelationActions.size());
 
         actualRelationActions.forEach(action -> verifyAction(action, Relation.class));
 
         // entities
-        List<AtomicAction<Publication>> actualEntityActions = ListTestUtils
-                .readValues(outputEntityDir.toString(), text -> {
-                    try {
-                        return AtomicActionSerDeUtils.deserializeAction(text.toString());
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-        assertEquals(actualEntityActions.size(), 2);
+        List<AtomicAction<Publication>> actualEntityActions = IteratorUtils.toList(SequenceFileTextValueReader.fromFile(outputEntityPath),
+                x -> AtomicActionDeserializationUtils.deserializeAction(x.toString()));
+        assertEquals(2, actualEntityActions.size());
 
         actualEntityActions.forEach(action -> verifyAction(action, Publication.class));
 
@@ -157,12 +130,14 @@ public class PatentExporterJobTest {
     public void shouldNotExportEntitiesNorRelationsWhenEntityTitleIsNull() throws IOException {
         //given
         AvroTestUtils.createLocalAvroDataStore(
-                JsonAvroTestUtils.readJsonDataStore(Objects.requireNonNull(cl.getResource(INPUT_DOCUMENT_TO_PATENT_NULLCHECK_PATH)).getFile(), DocumentToPatent.class),
-                inputDocumentToPatentDir.toString());
+                JsonAvroTestUtils.readJsonDataStore(
+                        ClassPathResourceProvider.getResourcePath(INPUT_DOCUMENT_TO_PATENT_NULLCHECK_PATH), DocumentToPatent.class),
+                inputDocumentToPatentPath);
         AvroTestUtils.createLocalAvroDataStore(
-                JsonAvroTestUtils.readJsonDataStore(Objects.requireNonNull(cl.getResource(INPUT_PATENT_NULLCHECK_PATH)).getFile(), Patent.class),
-                inputPatentDir.toString());
-        SparkJob sparkJob = buildSparkJob(0.5);
+                JsonAvroTestUtils.readJsonDataStore(
+                        ClassPathResourceProvider.getResourcePath(INPUT_PATENT_NULLCHECK_PATH), Patent.class),
+                inputPatentPath);
+        SparkJob sparkJob = buildSparkJob("0.5");
 
         //when
         executor.execute(sparkJob);
@@ -171,18 +146,18 @@ public class PatentExporterJobTest {
         assertCountersInReport(0, 0, 0);
     }
 
-    private SparkJob buildSparkJob(Double trustLevelThreshold) {
+    private SparkJob buildSparkJob(String trustLevelThreshold) {
         return SparkJobBuilder.create()
                 .setAppName(getClass().getName())
                 .setMainClass(PatentExporterJob.class)
-                .addArg("-inputDocumentToPatentPath", inputDocumentToPatentDir.toString())
-                .addArg("-inputPatentPath", inputPatentDir.toString())
-                .addArg("-trustLevelThreshold", String.valueOf(trustLevelThreshold))
+                .addArg("-inputDocumentToPatentPath", inputDocumentToPatentPath)
+                .addArg("-inputPatentPath", inputPatentPath)
+                .addArg("-trustLevelThreshold", trustLevelThreshold)
                 .addArg("-patentDateOfCollection", PATENT_DATE_OF_COLLECTION)
                 .addArg("-patentEpoUrlRoot", PATENT_EPO_URL_ROOT)
-                .addArg("-outputRelationPath", outputRelationDir.toString())
-                .addArg("-outputEntityPath", outputEntityDir.toString())
-                .addArg("-outputReportPath", outputReportDir.toString())
+                .addArg("-outputRelationPath", outputRelationPath)
+                .addArg("-outputEntityPath", outputEntityPath)
+                .addArg("-outputReportPath", outputReportPath)
                 .addJobProperty("spark.driver.host", "localhost")
                 .build();
     }
@@ -197,7 +172,7 @@ public class PatentExporterJobTest {
     private void assertCountersInReport(Integer expectedReferencesCount,
                                         Integer expectedEntitiesCount,
                                         Integer expectedDistinctPubsReferencesCount) throws IOException {
-        List<ReportEntry> reportEntries = AvroTestUtils.readLocalAvroDataStore(outputReportDir.toString());
+        List<ReportEntry> reportEntries = AvroTestUtils.readLocalAvroDataStore(outputReportPath);
         assertEquals(3, reportEntries.size());
 
         assertEquals(ReportEntryType.COUNTER, reportEntries.get(0).getType());

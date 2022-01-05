@@ -1,13 +1,14 @@
 package eu.dnetlib.iis.wf.importer.stream.project;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
+import org.apache.commons.io.IOUtils;
+import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
 import java.net.URL;
 
-import org.apache.commons.io.IOUtils;
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * @author mhorst
@@ -18,8 +19,6 @@ public class UrlStreamingFacadeTest {
     private final int readTimeout = 60000;
 
     private final int connectionTimeout = 60000;
-    
-    private final String encoding = "utf8";
     
     private final String contentTxtClassPath = "/eu/dnetlib/iis/wf/importer/content/sample_data.txt";
     
@@ -34,8 +33,7 @@ public class UrlStreamingFacadeTest {
         boolean compress = false;
 
         URL url = UrlStreamingFacade.class.getResource(contentTxtClassPath);
-        String expectedResult = IOUtils.toString(
-                UrlStreamingFacade.class.getResourceAsStream(contentTxtClassPath), encoding);
+        String expectedResult = ClassPathResourceProvider.getResourceContent(contentTxtClassPath);
         
         UrlStreamingFacade facade = new UrlStreamingFacade(url, compress, readTimeout, connectionTimeout);
         
@@ -53,8 +51,7 @@ public class UrlStreamingFacadeTest {
         boolean compress = true;
 
         URL url = UrlStreamingFacade.class.getResource(contentGzClassPath);
-        String expectedResult = IOUtils.toString(
-                UrlStreamingFacade.class.getResourceAsStream(contentTxtClassPath), encoding);
+        String expectedResult = ClassPathResourceProvider.getResourceContent(contentTxtClassPath);
         
         UrlStreamingFacade facade = new UrlStreamingFacade(url, compress, readTimeout, connectionTimeout);
         

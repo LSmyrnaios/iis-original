@@ -14,26 +14,34 @@ hidden var 'nihpositives' from select jmergeregexp(jgroup(word)) from (select * 
 hidden var 'nihnegatives' from select jmergeregexp(jgroup(word)) from (select * from nihnegatives order by length(word) desc);
 hidden var 'miur_unidentified' from select id from grants where fundingclass1="MIUR" and grantid="unidentified" limit 1;
 hidden var 'wt_unidentified' from select id from grants where fundingclass1="WT" and grantid="unidentified" limit 1;
-
+hidden var 'gsri_unidentified' from select id from grants where fundingclass1="GSRI" and grantid="unidentified" limit 1;
 
 create temp table pubs as setschema 'c1,c2' select jsonpath(c1, '$.id', '$.text') from stdinput();
 
-create temp table matched_undefined_miur_only as select distinct docid, var('miur_unidentified') as id from (setschema 'docid,prev,middle,next'
-select c1 as docid, textwindow2s(c2,10,1,10, '\b(?:RBSI\d{2}\w{4})\b') from (setschema 'c1,c2' select * from pubs where c2 is not null)) where var('miur_unidentified') and (regexprmatches('\b(?:RBSI\d{2}\w{4})\b', middle));
+create temp table matched_undefined_miur_only as select distinct docid, var('miur_unidentified') as id, prev,middle,next from (setschema 'docid,prev,middle,next'
+select c1 as docid, textwindow2s(c2,10,1,10, '\b(?:RBSI\d{2}\w{4})\b') from (setschema 'c1,c2' select * from pubs where c2 is not null)) 
+where var('miur_unidentified') and (regexprmatches('\b(?:RBSI\d{2}\w{4})\b', middle));
 
-create temp table matched_undefined_wt_only as select distinct docid, var('wt_unidentified') as id from (setschema 'docid,prev,middle,next'
+create temp table matched_undefined_wt_only as select distinct docid, var('wt_unidentified') as id, prev,middle,next from (setschema 'docid,prev,middle,next'
 select c1 as docid, textwindow2s(c2,20,2,3, '(\bWel?lcome Trust\b|\bWT\b)') from (setschema 'c1,c2' select * from pubs where c2 is not null)) where var('wt_unidentified') and (regexprmatches('\bWel?lcome Trust\b', middle) or 
 regexpcountwords('(?:\bwell?come trust\b)|(?:(?:\bthis work was|financial(?:ly)?|partial(?:ly)?|partly|(?:gratefully\s)?acknowledges?)?\s?\b(?:support|fund|suppli?)(?:ed|ing)?\s(?:by|from|in part\s(?:by|from)|through)?\s?(?:a)?\s?(?:grant)?)|(?:(?:programme|project) grant)|(?:(?:under|through)?\s?(?:the)?\s(?:grants?|contract(?:\snumber)?)\b)|(?:\bprograms? of\b)|(?:\bgrants? of\b)|(?:\bin part by\b)|(?:\bthis work could not have been completed without\b)|(?:\bcontract\b)|(?:\backnowledgments?\b)', lower(prev||' '||middle||' '||next)) > 3);
 
-create temp table output_table as
+create temp table matched_undefined_gsri as select c1 as docid, var('gsri_unidentified') as id, prev,middle,next from  
+(setschema 'c1, prev, middle, next' select c1, 
+textwindow2s(keywords(c2), 10,6,10,'(?i)\bGSRT\b|\bΓΓΕΤ\b|γενικ(?:ή|η) γραμματε(?:ί|ι)α (?:έ|ε)ρευνας και τεχνολογ(?:ί|ι)ας|GENERAL SECRETARIAT FOR RESEARCH AND TECHNOLOGY') 
+from pubs  where c2 is not null)  
+where var('gsri_unidentified') is not null and
+regexprmatches("(?i)greece|greek|foundation|grant|project|funded|hellenic|supported|acknowledge|\bgr\b|research|program|secretariat|γραμματε(?:ί|ι)α",prev||" "||middle||" "||next)  
+group by docid;
 
-select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8,'textsnippet',j2s(prev,middle,next)) as C1, docid, id, fundingclass1, grantid from (
+create temp table output_table as
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8, 'textsnippet', (prev||" <<< "||middle||" >>> "||next)) as C1, docid, id, fundingclass1, grantid from (
 select docid,id,fundingclass1, grantid,prev,middle,next from (select * from (setschema 'docid,prev,middle,next' select c1 as docid,textwindow2s(regexpr("\n",c2," "),10,1,10, '(?:RBSI\d{2}\w{4})|(?:2015\w{6})') from (setschema 'c1,c2' select * from pubs where c2 is not null) ) ,grants where fundingclass1="MIUR" and regexpr("((?:RBSI\d{2}\w{4})|(?:2015\w{6}))",middle) = grantid)
 group by docid,id)
 
 union all
 
-select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min(1.49,confidence)/1.5),'textsnippet',j2s(prev,middle,next)) as C1, docid, id, fundingclass1, grantid from 
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min(1.49,confidence)/1.5), 'textsnippet', (prev||" <<< "||middle||" >>> "||next)) as C1, docid, id, fundingclass1, grantid from
 ( select prev,middle,next,docid,id,max(confidence) as confidence, docid, id,  fundingclass1, grantid from ( select 
 (0.3
 +hardmatch*0.6
@@ -41,7 +49,7 @@ select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min
 +rcukmatch)
 as confidence, docid, id,prev,middle,next, fundingclass1, grantid
 from (
-unindexed select regexprmatches('\bRCUK\b|[Rr]esearch [Cc]ouncils UK', context) as rcukmatch,
+unindexed select regexprmatches('\bRCUK\b|\bUKRI\b|[Rr]esearch [Cc]ouncils UK', context) as rcukmatch,
 regexprmatches('\b'||rcuk_subfunder||'\b', context) as subrcukmatch,
 regexprmatches('(?:G\d{6,7})|(?:[A-Z]{2}\/\w{6,7}\/\d{1,2}(?:\/xx)?)|(?:(?:BBS|PPA)\/[A-Z](?:\/[A-Z])?\/(?:\w{8,9}|(?:\d{4}\/)?\d{5}(?:\/\d)?))|(?:(?:RES|PTA)-\d{3}-\d{2}-\d{4}(?:-[A-Z]|-\d{1,2})?)|(?:MC_(?:\w{8,10}|\w{2}_(?:\w{2,4}_)?(?:\d{4,5}|[UG]\d{7,9})(?:\/\d{1,2})?))|(?:MC_\w{2}_\w{2}(?:_\w{2})?\/\w{7}(?:\/\d)?)|(?:ESPA-[A-Z]{3,6}-\d{4}(?:-[A-Z]{3}-\d{3}|-\d{3})?)', middle) as hardmatch,
 docid, id, fundingclass1, grantid,middle,prev,next
@@ -50,18 +58,26 @@ select docid, stripchars(middle,'.)(,[]') as middle, prev, next, prev||' '||midd
 from (
   setschema 'docid,prev,middle,next' select c1, textwindow2s(c2,15,1,1,'(?:[SG]?\d{5,7}(?:\/\d)?)|(?:[A-Z]{2}\/\w{6,7}\/\d{1,2}(?:\/xx)?)|(?:[GE]\d{2,3}\/\d{1,4})|(?:(?:BBS|PPA)\/[A-Z](?:\/[A-Z])?\/(?:\w{8,9}|(?:\d{4}\/)?\d{5}(?:\/\d)?))|(?:(?:RES|PTA)-\d{3}-\d{2}-\d{4}(?:-[A-Z]|-\d{1,2})?)|(?:MC_(?:\w{8,10}|\w{2}_(?:\w{2,4}_)?(?:\d{4,5}|[UG]\d{7,9})(?:\/\d{1,2})?))|(?:MC_\w{2}_\w{2}(?:_\w{2})?\/\w{7}(?:\/\d)?)|(?:[A-Za-z]{3,9}\d{5,7}a?)|(?:ESPA-[A-Z]{3,6}-\d{4}(?:-[A-Z]{3}-\d{3}|-\d{3})?)') from pubs where c2 is not null
 )), grants
-WHERE fundingclass1="RCUK" and middle = grantid
+WHERE fundingclass1="UKRI" and middle = grantid
 ) where confidence>0.3 ) group by docid,id)
 
 union all
 --DFG
-select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8,'textsnippet', prev||" "||middle||" "||next) as C1, docid, id, fundingclass1, grantid from
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8, 'textsnippet', (prev||" <<< "||middle||" >>> "||next)) as C1, docid, id, fundingclass1, grantid from
 (setschema 'docid,prev,middle,next' select c1, textwindow2s(filterstopwords(keywords(c2)),10,2,7,"\w{3}\s\d{1,4}") from pubs where c2 is not null), grants
 where lower(regexpr("\b(\w{3}\s\d{1,4})\b",middle)) = grantid and
 regexprmatches("support|project|grant|fund|thanks|agreement|research|acknowledge|centre|center|nstitution|program|priority|dfg|german|dutch|deutche",lower(prev||" "||next)) group by docid, id
 --DFG
 
 union all
+-- CHIST-ERA
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8, 'textsnippet', (prev||" <<< "||middle||" >>> "||next)) as C1, docid, id, fundingclass1, grantid from
+(setschema 'docid,prev,middle,next' select c1, textwindow2s(comprspaces(lower(keywords(c2))),10,2,10,"\bchist era\b") from pubs where c2 is not null), grants
+where (regexprmatches("\b"||keywords(lower(acronym))||"\b", prev||" "||middle||" "||next) or grantid = "unidentified") and fundingclass1 = "CHIST-ERA"  group by docid, id
+
+union all
+
+
 -- Canadian funders
 select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8, 'textsnippet', textsnippet) as C1, docid, id, fundingclass1, grantid
 from (
@@ -120,7 +136,7 @@ group by docid, id
 
 
 union all
-select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8,'textsnippet',j2s(prev,middle,next)) as C1, docid, id, fundingclass1, grantid from (
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8, 'textsnippet', (prev||" <<< "||middle||" >>> "||next)) as C1, docid, id, fundingclass1, grantid from (
 select docid,id,fundingclass1,grantid,prev,middle,next from (select docid,id,grantid,middle,fundingclass1,grantid,prev,middle,next  from (
 setschema 'docid,prev,middle,next' select c1 as docid,textwindow2s(c2,15,1,5,"(?:\bANR-\d{2}-\w{4}-\d{4}\b)|\b(?:06|07|10|11|12|13|14|15|16|17|18|19)\-\w{4}\-\d{4}(?:\-\d{2})*\b|(.+\/\w+\/\d{4}\W*\Z)|(\d{4})|(\d{2}-\d{2}-\d{5})|(\d{6,7})|(\w{2}\d{4,})|(\w+\/\w+\/\w+)|(\w*\/[\w,\.]*\/\w*)|(?:\d{3}\-\d{7}\-\d{4})|(?:(?:\b|U)IP\-2013\-11\-\d{4}\b)|(\b(?:(?:(?:\w{2,3})(?:\.|\-)(?:\w{2,3})(?:\.|\-)(?:\w{2,3}))|(?:\d+))\b)|(?:\b\d{7,8}\b)|(?:\b\d{3}[A-Z]\d{3}\b)|(?:[A-Z]{2,3}.+)|(?:\d{4}\-\w+\-\w+(\-\d+)*)|(?:\d{4}\-\d{2,})") from (setschema 'c1,c2' select * from pubs where c2 is not null) ) , grants where 
 (regexpr("((?:[\w,\.\-]*\/)+\d+)",middle) = grantid and (fundingclass1 in ("FCT","ARC"))) or 
@@ -149,7 +165,7 @@ or  (fundingclass1="SNSF" and regexpr('0{0,1}(\d{5,6})',middle)=grantid and rege
 
 union all
 
-select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8,'textsnippet',j2s(prev,middle,next)) as C1, docid, id, fundingclass1, grantid from (
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8, 'textsnippet', (prev||" <<< "||middle||" >>> "||next)) as C1, docid, id, fundingclass1, grantid from (
 
 select docid,id,fundingclass1, grantid,prev,middle,next from (select * from (setschema 'docid,prev,middle,next' select c1 as docid,textwindow2s(regexpr("\n",c2," "),7,2,3,"\w{1,3}\s*\d{1,5}(?:(?:\-\w\d{2})|\b)") from (setschema 'c1,c2' select * from pubs where c2 is not null) ) ,grants where fundingclass1="FWF" and regexpr("(\w{1,3}\s*\d{1,5})",middle) = grantid and (regexprmatches("austrian|fwf",lower(j2s(prev,middle,next))) or regexprmatches(alias,j2s(prev,middle,next))  )) group by docid,id
 )
@@ -157,7 +173,7 @@ select docid,id,fundingclass1, grantid,prev,middle,next from (select * from (set
 
 union all 
 
-select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min(1.49,confidence)/1.5),'textsnippet',j2s(prev,middle,next)) as C1, docid, id, fundingclass1, grantid from ( select prev,middle,next,docid,id,max(confidence) as confidence, small_string, string, fundingclass1, grantid from ( select docid, id,
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min(1.49,confidence)/1.5), 'textsnippet', (prev||" <<< "||middle||" >>> "||next)) as C1, docid, id, fundingclass1, grantid from ( select prev,middle,next,docid,id,max(confidence) as confidence, small_string, string, fundingclass1, grantid from ( select docid, id,
     (fullprojectmatch*10
     +coreprojectmatch*10
     +(activitymatch>0)*(administmatch>0)*length(nih_serialnumber)*2.5
@@ -187,7 +203,7 @@ select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min
 
 union all 
 
-select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min(1.49,confidence)/1.5), 'textsnippet',j2s(prev,middle,next)) as C1, docid, id, fundingClass1, grantid from ( select prev,middle,next,docid,id,max(confidence) as confidence, fundingClass1, grantid from ( select docid, id, fundingClass1, grantid,prevpack as prev,middle,nextpack as next,
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min(1.49,confidence)/1.5), 'textsnippet', (prev||" <<< "||middle||" >>> "||next)) as C1, docid, id, fundingClass1, grantid from ( select prev,middle,next,docid,id,max(confidence) as confidence, fundingClass1, grantid from ( select docid, id, fundingClass1, grantid,prevpack as prev,middle,nextpack as next,
       case when fundingClass1="WT" then /*wellcome trust confidence*/
                 (regexpcountwords(var('wtpospos'),j2s(prevpack,nextpack)) * regexpcountwords('(?:collaborative|joint call)',j2s(prevpack,nextpack)))*0.33 +
                 regexprmatches('\d{5}ma(?:\b|_)',middle)+
@@ -207,9 +223,11 @@ select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min
             regexpcountwords("\bnsf\b|national science foundation",j2s(prevpack,middle,nextpack)) - 
             5 * regexpcountwords("china|shanghai|danish|nsfc|\bsnf\b|bulgarian|\bbnsf\b|norwegian|rustaveli|israel|\biran\b|shota|georgia|functionalization|manufacturing",j2s(prevpack,middle,nextpack))
        when fundingClass1="MESTD" then
-            regexpcountwords("serbia|mestd",j2s(prevpacksmall,middle,nextpack))
-       when fundingClass1="GSRT" then
-            regexpcountwords("gsrt",j2s(prevpacksmall,middle,nextpack))
+            regexpcountwords("serbia|mestd|451_03_68",j2s(prevpacksmall,middle,nextpack))
+       when fundingClass1="SFRS" then
+            regexpcountwords('promis|\bsfrs\b|sciencefundrs|(?:\b|_|\d)'||normalizedacro||'(?:\b|_|\d)',j2s(prevpacksmall,middle,nextpack))
+       when fundingClass1="GSRI" then
+            regexpcountwords("gsrt|\bgsri\b",j2s(prevpacksmall,middle,nextpack))
        when fundingClass1="EC"/* fp7 confidence */ then
             case when fundingClass2 = "FP7" THEN
             regexprmatches(var('fp7middlepos'),middle)+
@@ -240,20 +258,23 @@ select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min
                             from   (setschema 'c1,c2' select * from  pubs where c2 is not null)) ,grants
                             where  (not regexprmatches( '(?:0|\D|\b)+(?:\d{8,})',middle) and not regexprmatches('(?:\D|\b)(?:\d{7})(?:\D|\b)',middle) and regexpr('(?:0|\D|\b)+(\d{5})',middle) = grantid and fundingclass1  in ('WT', 'EC') ) or ((not regexprmatches('(\d{6,}(?:\d|i\d{3}_?\b))|(jana\d{6,})', middle)) and not regexprmatches('(?:\D|\b)(?:\d{7})(?:\D|\b)',middle) 
                         and regexpr('(\d{6})',middle) = grantid and fundingclass1 in ('WT', 'EC')) or (regexprmatches('(?:(?:\D|\b)(?:\d{7})(?:\D|\b))',middle) and regexpr("(\d{7})",middle) = grantid and fundingclass1='NSF' ) 
-                        or ( regexpr("(\d{5,6})",middle) = grantid and fundingclass1='MESTD' ) or (regexpr("(\d{6})",middle) = grantid and fundingclass1='GSRT')
+                        or ( regexpr("(\d{5,6})",middle) = grantid and fundingclass1='MESTD' ) or (regexpr("(\d{6})",middle) = grantid and fundingclass1='GSRI') 
+                        or (regexpr("(\d{7})",middle) = grantid and fundingclass1='SFRS')
                         )
                       ) where confidence > 0.16) group by docid,id);
 
+delete from output_table where fundingClass1="CHIST-ERA" and grantid="unidentified" and docid in (select docid from output_table where grantid!="unidentified");
 delete from matched_undefined_miur_only where docid in (select docid from output_table where fundingClass1="MIUR");
 delete from matched_undefined_wt_only where docid in (select docid from output_table where fundingClass1="WT");
+delete from matched_undefined_gsri where docid in (select docid from output_table where fundingClass1="GSRI");
 
 delete from output_table where j2s(docid,id) in (select j2s(T.docid, T.id) from output_table S, output_table T where  S.docid = T.docid and S.id in (select id from grants where grantid in (select * from gold)) and T.id in (select id from grants where grantid in ("246686", "283595","643410")));
 
 create temp table secondary_output_table as 
-select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min(1.49,confidence)/1.5),'textsnippet',context) as C1, docid, id, fundingclass1, grantid, context from ( select docid,id,confidence, docid, id,  fundingclass1, grantid, context from ( select 
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', sqroot(min(1.49,confidence)/1.5), 'textsnippet', context) as C1, docid, id, fundingclass1, grantid, context from ( select docid,id,confidence, docid, id,  fundingclass1, grantid, context from ( select
 0.8 as confidence, docid, id, fundingclass1, grantid, context
 from (
-unindexed select docid, regexpr("(\d+)",middle) as middle, comprspaces(j2s(prev1,prev2,prev3,prev4,prev5,prev6,prev7,prev8,prev9,prev10,prev11,prev12,prev13,middle,next)) as context
+unindexed select docid, regexpr("(\d+)",middle) as middle, comprspaces(j2s(prev1,prev2,prev3,prev4,prev5,prev6,prev7,prev8,prev9,prev10,prev11,prev12,prev13,"<<<",middle,">>>",next)) as context
 from (
   setschema 'docid,prev1,prev2,prev3,prev4,prev5,prev6,prev7,prev8,prev9,prev10,prev11,prev12,prev13,middle,next' select c1, textwindow(lower(c2),-13,0,1, '\b\d{5,6}\b') from pubs where c2 is not null
 ) where CAST(regexpr("(\d+)",middle) AS INT)>70000), grants
@@ -267,6 +288,8 @@ select C1 from output_table
 union all
 select C1 from secondary_output_table
 union all
-select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8,'textsnippet','') from matched_undefined_miur_only
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8, 'textsnippet', prev||" "||middle||" "||next) from matched_undefined_miur_only
 union all
-select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8,'textsnippet','') from matched_undefined_wt_only;
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8, 'textsnippet', prev||" "||middle||" "||next) from matched_undefined_wt_only
+union all
+select jdict('documentId', docid, 'projectId', id, 'confidenceLevel', 0.8, 'textsnippet', prev||" "||middle||" "||next) from matched_undefined_gsri;

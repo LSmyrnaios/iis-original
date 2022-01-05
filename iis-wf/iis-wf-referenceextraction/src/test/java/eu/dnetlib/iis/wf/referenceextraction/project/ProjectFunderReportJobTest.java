@@ -1,35 +1,40 @@
 package eu.dnetlib.iis.wf.referenceextraction.project;
 
-import java.io.File;
-import java.io.IOException;
-
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-
-import com.google.common.io.Files;
-
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
+import eu.dnetlib.iis.common.SlowTest;
+import eu.dnetlib.iis.common.java.io.DataStore;
+import eu.dnetlib.iis.common.java.io.HdfsTestUtils;
 import eu.dnetlib.iis.common.schemas.ReportEntry;
 import eu.dnetlib.iis.common.utils.AvroAssertTestUtil;
 import eu.dnetlib.iis.common.utils.AvroTestUtils;
 import eu.dnetlib.iis.common.utils.JsonAvroTestUtils;
 import eu.dnetlib.iis.importer.schemas.Project;
 import eu.dnetlib.iis.referenceextraction.project.schemas.DocumentToProject;
+import org.apache.hadoop.conf.Configuration;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import pl.edu.icm.sparkutils.test.SparkJob;
 import pl.edu.icm.sparkutils.test.SparkJobBuilder;
 import pl.edu.icm.sparkutils.test.SparkJobExecutor;
+
+import java.io.File;
+import java.io.IOException;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * 
  * @author mhorst
  *
  */
+@SlowTest
 public class ProjectFunderReportJobTest {
 
     private SparkJobExecutor executor = new SparkJobExecutor();
-    
-    private File workingDir;
+
+    @TempDir
+    public File workingDir;
     
     private String inputProjectDirPath;
     
@@ -38,20 +43,12 @@ public class ProjectFunderReportJobTest {
     private String outputReportDirPath;
     
     
-    @Before
+    @BeforeEach
     public void before() {
-        workingDir = Files.createTempDir();
         inputProjectDirPath = workingDir + "/spark_project_referenceextraction_report/input_project";
         inputDocumentToProjectDirPath = workingDir + "/spark_project_referenceextraction_report/input_document_to_project";
         outputReportDirPath = workingDir + "/spark_project_referenceextraction_report/output_report";
     }
-    
-    
-    @After
-    public void after() throws IOException {
-        FileUtils.deleteDirectory(workingDir);
-    }
-    
     
     //------------------------ TESTS --------------------------
     
@@ -59,9 +56,12 @@ public class ProjectFunderReportJobTest {
     public void generateReport() throws IOException {
         
         // given
-        String jsonInputProjectFile = "src/test/resources/eu/dnetlib/iis/wf/referenceextraction/project/funder_report/data/input_project.json";
-        String jsonInputDocumentToProjectFile = "src/test/resources/eu/dnetlib/iis/wf/referenceextraction/project/funder_report/data/input_document_to_project.json";
-        String jsonOutputReportFile = "src/test/resources/eu/dnetlib/iis/wf/referenceextraction/project/funder_report/data/output_report.json";
+        String jsonInputProjectFile = ClassPathResourceProvider
+                .getResourcePath("eu/dnetlib/iis/wf/referenceextraction/project/funder_report/data/input_project.json");
+        String jsonInputDocumentToProjectFile = ClassPathResourceProvider
+                .getResourcePath("eu/dnetlib/iis/wf/referenceextraction/project/funder_report/data/input_document_to_project.json");
+        String jsonOutputReportFile = ClassPathResourceProvider
+                .getResourcePath("eu/dnetlib/iis/wf/referenceextraction/project/funder_report/data/output_report.json");
         
         
         AvroTestUtils.createLocalAvroDataStore(
@@ -75,6 +75,8 @@ public class ProjectFunderReportJobTest {
         executor.execute(buildProjectFunderReportJob(inputProjectDirPath, inputDocumentToProjectDirPath, outputReportDirPath));
         
         // assert
+        assertEquals(1,
+                HdfsTestUtils.countFiles(new Configuration(), outputReportDirPath, DataStore.AVRO_FILE_EXT));
         AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputReportDirPath, jsonOutputReportFile, ReportEntry.class);
     }
     

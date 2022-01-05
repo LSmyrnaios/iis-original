@@ -1,17 +1,13 @@
 package eu.dnetlib.iis.wf.referenceextraction.dataset;
 
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-
 import eu.dnetlib.iis.common.AbstractOozieWorkflowTestCase;
-import eu.dnetlib.iis.common.IntegrationTest;
+import org.junit.jupiter.api.Test;
 
 /**
  * 
  * @author Mateusz Kobos
  *
  */
-@Category(IntegrationTest.class)
 public class DatasetRefDataciteWfTest extends AbstractOozieWorkflowTestCase {
 
     @Test

@@ -1,7 +1,7 @@
 package eu.dnetlib.iis.common.java.io;
 
 import org.apache.hadoop.conf.Configuration;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -10,14 +10,15 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class HdfsUtilsTest {
 
-    @Test(expected = Exception.class)
-    public void listDirsShouldThrowOnError() throws IOException {
+    @Test
+    public void listDirsShouldThrowOnError() {
         // when
-        HdfsUtils.listDirs(new Configuration(), null);
+        assertThrows(Exception.class, () -> HdfsUtils.listDirs(new Configuration(), null));
     }
 
     @Test
@@ -37,5 +38,4 @@ public class HdfsUtilsTest {
         List<String> actuals = paths.stream().sorted().collect(Collectors.toList());
         assertEquals(expecteds, actuals);
     }
-
 }

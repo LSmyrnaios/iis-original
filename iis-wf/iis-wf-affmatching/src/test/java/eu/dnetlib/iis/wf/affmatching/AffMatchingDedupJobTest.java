@@ -1,35 +1,39 @@
 package eu.dnetlib.iis.wf.affmatching;
 
-import java.io.File;
-import java.io.IOException;
-
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-
-import com.google.common.io.Files;
-
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
+import eu.dnetlib.iis.common.SlowTest;
+import eu.dnetlib.iis.common.java.io.DataStore;
+import eu.dnetlib.iis.common.java.io.HdfsTestUtils;
 import eu.dnetlib.iis.common.schemas.ReportEntry;
 import eu.dnetlib.iis.common.utils.AvroAssertTestUtil;
 import eu.dnetlib.iis.common.utils.AvroTestUtils;
 import eu.dnetlib.iis.common.utils.JsonAvroTestUtils;
 import eu.dnetlib.iis.wf.affmatching.model.MatchedOrganization;
 import eu.dnetlib.iis.wf.affmatching.model.MatchedOrganizationWithProvenance;
+import org.apache.hadoop.conf.Configuration;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import pl.edu.icm.sparkutils.test.SparkJob;
 import pl.edu.icm.sparkutils.test.SparkJobBuilder;
 import pl.edu.icm.sparkutils.test.SparkJobExecutor;
 
+import java.io.File;
+import java.io.IOException;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 /**
 * @author mhorst
 */
-
+@SlowTest
 public class AffMatchingDedupJobTest {
     
     
     private SparkJobExecutor executor = new SparkJobExecutor();
-    
-    private File workingDir;
+
+    @TempDir
+    public File workingDir;
     
     private String inputADirPath;
     
@@ -40,10 +44,8 @@ public class AffMatchingDedupJobTest {
     private String outputReportPath;
     
     
-    @Before
+    @BeforeEach
     public void before() {
-        
-        workingDir = Files.createTempDir();
         
         inputADirPath = workingDir + "/affiliation_dedup/input/a";
         inputBDirPath = workingDir + "/affiliation_dedup/input/b";
@@ -52,15 +54,6 @@ public class AffMatchingDedupJobTest {
         
     }
     
-    
-    @After
-    public void after() throws IOException {
-        
-        FileUtils.deleteDirectory(workingDir);
-        
-    }
-    
-    
     //------------------------ TESTS --------------------------
     
     @Test
@@ -68,12 +61,16 @@ public class AffMatchingDedupJobTest {
         
         
         // given
-        
-        String jsonInputAPath = "src/test/resources/data/dedup/input/input1.json";
-        String jsonInputBPath = "src/test/resources/data/dedup/input/input2.json";
-        
-        String jsonOutputPath = "src/test/resources/data/dedup/expectedOutput/matchedOrganizations.json";
-        String jsonOutputReportPath = "src/test/resources/data/dedup/expectedOutput/report.json";
+
+        String jsonInputAPath = ClassPathResourceProvider
+                .getResourcePath("data/dedup/input/input1.json");
+        String jsonInputBPath = ClassPathResourceProvider
+                .getResourcePath("data/dedup/input/input2.json");
+
+        String jsonOutputPath = ClassPathResourceProvider
+                .getResourcePath("data/dedup/expectedOutput/matchedOrganizations.json");
+        String jsonOutputReportPath = ClassPathResourceProvider
+                .getResourcePath("data/dedup/expectedOutput/report.json");
         
         
         AvroTestUtils.createLocalAvroDataStore(
@@ -119,6 +116,8 @@ public class AffMatchingDedupJobTest {
         
         // assert
         AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputDirPath, jsonOutputPath, MatchedOrganizationWithProvenance.class);
+        assertEquals(1,
+                HdfsTestUtils.countFiles(new Configuration(), outputReportPath, DataStore.AVRO_FILE_EXT));
         AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputReportPath, jsonOutputReportPath, ReportEntry.class);
 
     }

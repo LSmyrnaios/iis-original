@@ -1,80 +1,79 @@
 package eu.dnetlib.iis.common.utils;
 
-import eu.dnetlib.iis.common.spark.JavaSparkContextFactory;
-import org.apache.commons.io.FileUtils;
+import eu.dnetlib.iis.common.java.io.HdfsTestUtils;
+import eu.dnetlib.iis.common.java.io.SequenceFileTextValueReader;
+import eu.dnetlib.iis.common.spark.TestWithSharedSparkContext;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.Text;
-import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
-import org.apache.spark.api.java.JavaSparkContext;
-import org.junit.*;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import scala.Tuple2;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class RDDUtilsTest {
+public class RDDUtilsTest extends TestWithSharedSparkContext {
     private static final int NUMBER_OF_OUTPUT_FILES = 2;
-    private static JavaSparkContext sc;
-    private static Configuration configuration;
 
-    private Path workingDir;
-    private Path outputDir;
-
-    @BeforeClass
-    public static void beforeClass() {
-        SparkConf conf = new SparkConf();
-        conf.setMaster("local");
-        conf.set("spark.driver.host", "localhost");
-        conf.setAppName(RDDUtilsTest.class.getSimpleName());
-        sc = JavaSparkContextFactory.withConfAndKryo(conf);
-        configuration = new Configuration();
-    }
-
-    @Before
-    public void before() throws IOException {
-        workingDir = Files.createTempDirectory("RDDUtilsTest_");
-        outputDir = workingDir.resolve("output");
-    }
-
-    @After
-    public void after() throws IOException {
-        FileUtils.deleteDirectory(workingDir.toFile());
-    }
-
-    @AfterClass
-    public static void afterClass() {
-        sc.stop();
-    }
+    @TempDir
+    public Path workingDir;
 
     @Test
-    public void savePairRDDShouldSavePairRDDAsSeqFiles() throws IOException {
+    @DisplayName("Pair RDD is saved with specified number of files")
+    public void savePairRDDShouldSavePairRDDAsSeqFilesWithSpecifiedNumberOfFiles() throws IOException {
         //given
-        JavaPairRDD<Text, Text> in = sc.parallelizePairs(Arrays.asList(
+        JavaPairRDD<Text, Text> in = jsc().parallelizePairs(Arrays.asList(
                 new Tuple2<>(new Text("1L"), new Text("1R")),
                 new Tuple2<>(new Text("2L"), new Text("2R")),
                 new Tuple2<>(new Text("3L"), new Text("3R"))),
                 NUMBER_OF_OUTPUT_FILES + 1);
+        Path outputDir = workingDir.resolve("output");
 
         //when
-        RDDUtils.saveTextPairRDD(in, NUMBER_OF_OUTPUT_FILES, outputDir.toString(), configuration);
+        RDDUtils.saveTextPairRDD(in, NUMBER_OF_OUTPUT_FILES, outputDir.toString(), jsc().hadoopConfiguration());
 
         //then
         Pattern pattern = Pattern.compile("^part-r-.\\d+$");
-        long fileCount = Files.list(outputDir)
-                .filter(x -> pattern.matcher(x.getFileName().toString()).matches())
-                .count();
+        long fileCount = HdfsTestUtils.countFiles(new Configuration(), outputDir.toString(), x ->
+                pattern.matcher(x.getName()).matches());
         assertEquals(NUMBER_OF_OUTPUT_FILES, fileCount);
 
-        List<Text> out = ListTestUtils.readValues(outputDir.toString(), Function.identity());
+        List<Text> out = IteratorUtils.toList(SequenceFileTextValueReader.fromFile(outputDir.toString()));
+        List<String> actualValues = out.stream().map(Text::toString).sorted().collect(Collectors.toList());
+        List<String> expectedValues = in.collect().stream().map(x -> x._2.toString()).sorted().collect(Collectors.toList());
+        ListTestUtils
+                .compareLists(actualValues, expectedValues);
+    }
+
+    @Test
+    @DisplayName("Pair RDD is saved")
+    public void savePairRDDShouldSavePairRDDAsSeqFiles() throws IOException {
+        //given
+        JavaPairRDD<Text, Text> in = jsc().parallelizePairs(Arrays.asList(
+                new Tuple2<>(new Text("1L"), new Text("1R")),
+                new Tuple2<>(new Text("2L"), new Text("2R")),
+                new Tuple2<>(new Text("3L"), new Text("3R"))),
+                NUMBER_OF_OUTPUT_FILES);
+        Path outputDir = workingDir.resolve("output");
+
+        //when
+        RDDUtils.saveTextPairRDD(in, outputDir.toString(), jsc().hadoopConfiguration());
+
+        //then
+        Pattern pattern = Pattern.compile("^part-r-.\\d+$");
+        long fileCount = HdfsTestUtils.countFiles(new Configuration(), outputDir.toString(), x ->
+                pattern.matcher(x.getName()).matches());
+        assertEquals(NUMBER_OF_OUTPUT_FILES, fileCount);
+
+        List<Text> out = IteratorUtils.toList(SequenceFileTextValueReader.fromFile(outputDir.toString()));
         List<String> actualValues = out.stream().map(Text::toString).sorted().collect(Collectors.toList());
         List<String> expectedValues = in.collect().stream().map(x -> x._2.toString()).sorted().collect(Collectors.toList());
         ListTestUtils

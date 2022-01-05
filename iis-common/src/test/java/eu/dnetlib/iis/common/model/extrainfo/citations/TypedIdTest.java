@@ -1,8 +1,8 @@
 package eu.dnetlib.iis.common.model.extrainfo.citations;
 
-import static org.junit.Assert.*;
+import org.junit.jupiter.api.Test;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * @author mhorst
@@ -11,35 +11,34 @@ import org.junit.Test;
 public class TypedIdTest {
 
     @Test
-    public void testEquals() throws Exception {
+    public void testEquals() {
         // given
         String value = "someValue";
         String type = "someType";
-        float confidenceLevel = 0.9f;
-        TypedId typedId = new TypedId(value, type, confidenceLevel);
+        float trustLevel = 0.9f;
+        TypedId typedId = new TypedId(value, type, trustLevel);
         
         // execute & assert
-        assertFalse(typedId.equals(null));
-        assertFalse(typedId.equals("string"));
-        assertFalse(typedId.equals(new TypedId("otherValue", type, confidenceLevel)));
-        assertFalse(typedId.equals(new TypedId(value, "otherType", confidenceLevel)));
-        assertFalse(typedId.equals(new TypedId(value, type, 0.8f)));
-        assertTrue(typedId.equals(new TypedId(value, type, confidenceLevel)));
+        assertNotNull(typedId);
+        assertNotEquals("string", typedId);
+        assertNotEquals(typedId, new TypedId("otherValue", type, trustLevel));
+        assertNotEquals(typedId, new TypedId(value, "otherType", trustLevel));
+        assertNotEquals(typedId, new TypedId(value, type, 0.8f));
+        assertEquals(typedId, new TypedId(value, type, trustLevel));
     }
 
     @Test
-    public void testHashCode() throws Exception {
+    public void testHashCode() {
         // given
         String value = "someValue";
         String type = "someType";
-        float confidenceLevel = 0.9f;
-        TypedId typedId = new TypedId(value, type, confidenceLevel);
+        float trustLevel = 0.9f;
+        TypedId typedId = new TypedId(value, type, trustLevel);
         
         // execute & assert
-        assertNotEquals(typedId.hashCode(), new TypedId("otherValue", type, confidenceLevel).hashCode());
-        assertNotEquals(typedId.hashCode(), new TypedId(value, "otherType", confidenceLevel).hashCode());
+        assertNotEquals(typedId.hashCode(), new TypedId("otherValue", type, trustLevel).hashCode());
+        assertNotEquals(typedId.hashCode(), new TypedId(value, "otherType", trustLevel).hashCode());
         assertNotEquals(typedId.hashCode(), new TypedId(value, type, 0.8f).hashCode());
-        assertEquals(typedId.hashCode(), new TypedId(value, type, confidenceLevel).hashCode());
+        assertEquals(typedId.hashCode(), new TypedId(value, type, trustLevel).hashCode());
     }
-    
 }

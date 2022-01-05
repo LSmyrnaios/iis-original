@@ -1,15 +1,7 @@
 package eu.dnetlib.iis.wf.affmatching;
 
-import java.io.File;
-import java.io.IOException;
-
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-
-import com.google.common.io.Files;
-
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
+import eu.dnetlib.iis.common.SlowTest;
 import eu.dnetlib.iis.common.schemas.ReportEntry;
 import eu.dnetlib.iis.common.utils.AvroAssertTestUtil;
 import eu.dnetlib.iis.common.utils.AvroTestUtils;
@@ -19,20 +11,27 @@ import eu.dnetlib.iis.importer.schemas.ProjectToOrganization;
 import eu.dnetlib.iis.metadataextraction.schemas.ExtractedDocumentMetadata;
 import eu.dnetlib.iis.referenceextraction.project.schemas.DocumentToProject;
 import eu.dnetlib.iis.wf.affmatching.model.MatchedOrganization;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import pl.edu.icm.sparkutils.test.SparkJob;
 import pl.edu.icm.sparkutils.test.SparkJobBuilder;
 import pl.edu.icm.sparkutils.test.SparkJobExecutor;
 
+import java.io.File;
+import java.io.IOException;
+
 /**
 * @author Łukasz Dumiszewski
 */
-
+@SlowTest
 public class AffMatchingJobTest {
     
     
     private SparkJobExecutor executor = new SparkJobExecutor();
-    
-    private File workingDir;
+
+    @TempDir
+    public File workingDir;
     
     private String inputOrgDirPath;
     
@@ -51,10 +50,8 @@ public class AffMatchingJobTest {
     private String outputReportPath;
     
     
-    @Before
+    @BeforeEach
     public void before() {
-        
-        workingDir = Files.createTempDir();
         
         inputOrgDirPath = workingDir + "/affiliation_matching/input/organizations";
         inputAffDirPath = workingDir + "/affiliation_matching/input/affiliations";
@@ -66,15 +63,6 @@ public class AffMatchingJobTest {
         
     }
     
-    
-    @After
-    public void after() throws IOException {
-        
-        FileUtils.deleteDirectory(workingDir);
-        
-    }
-    
-    
     //------------------------ TESTS --------------------------
     
     @Test
@@ -82,15 +70,22 @@ public class AffMatchingJobTest {
         
         
         // given
-        
-        String jsonInputOrgPath = "src/test/resources/data/input/organizations.json";
-        String jsonInputAffPath = "src/test/resources/data/input/affiliations.json";
-        String jsonInputInferredDocProjPath = "src/test/resources/data/input/docProjInferred.json";
-        String jsonInputDocProjPath = "src/test/resources/data/input/docProj.json";
-        String jsonInputProjOrgPath = "src/test/resources/data/input/projOrg.json";
-        
-        String jsonOutputPath = "src/test/resources/data/expectedOutput/matchedOrganizations.json";
-        String jsonOutputReportPath = "src/test/resources/data/expectedOutput/report.json";
+
+        String jsonInputOrgPath = ClassPathResourceProvider
+                .getResourcePath("data/input/organizations.json");
+        String jsonInputAffPath = ClassPathResourceProvider
+                .getResourcePath("data/input/affiliations.json");
+        String jsonInputInferredDocProjPath = ClassPathResourceProvider
+                .getResourcePath("data/input/docProjInferred.json");
+        String jsonInputDocProjPath = ClassPathResourceProvider
+                .getResourcePath("data/input/docProj.json");
+        String jsonInputProjOrgPath = ClassPathResourceProvider
+                .getResourcePath("data/input/projOrg.json");
+
+        String jsonOutputPath = ClassPathResourceProvider
+                .getResourcePath("data/expectedOutput/matchedOrganizations.json");
+        String jsonOutputReportPath = ClassPathResourceProvider
+                .getResourcePath("data/expectedOutput/report.json");
         
         
         AvroTestUtils.createLocalAvroDataStore(

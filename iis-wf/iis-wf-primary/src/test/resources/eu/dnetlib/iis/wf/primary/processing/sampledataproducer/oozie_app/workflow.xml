@@ -402,6 +402,10 @@
                     <name>citationmatchingFuzzySparkExecutorOverhead</name>
                     <value>512</value>
                 </property>
+				<property>
+					<name>citationmatchingFuzzyNumberOfPartitions</name>
+					<value>1000</value>
+				</property>
                 <property>
                     <name>researchInitiativeReferenceExtractionSparkExecutorOverhead</name>
                     <value>512</value>
@@ -412,7 +416,7 @@
                 </property>
 				<property>
                     <name>webcrawlContentRetrieverFactoryClassName</name>
-                    <value>eu.dnetlib.iis.wf.primary.processing.ClasspathContentRetrieverFactory</value>
+                    <value>eu.dnetlib.iis.wf.primary.processing.FileContentReturningHttpServiceFacadeFactory</value>
                 </property>
                 <property>
                     <name>webcrawlLockManagerFactoryClassName</name>
@@ -440,7 +444,7 @@
 				</property>
                 <property>
                     <name>patentMetadataRetrieverFacadeFactoryClassname</name>
-                    <value>eu.dnetlib.iis.wf.primary.processing.ClassPathBasedPatentServiceFacadeFactory</value>
+                    <value>eu.dnetlib.iis.wf.primary.processing.FileContentReturningPatentServiceFacadeFactory</value>
                 </property>
                 <property>
                     <name>patentServiceAuthnConsumerKey</name>
@@ -482,6 +486,18 @@
                     <name>patentServiceEndpointOpsUriRoot</name>
                     <value>expectedOpsUriRoot</value>
                 </property>
+				<property>
+					<name>affiliation_matching_number_of_emitted_files</name>
+					<value>1</value>
+				</property>
+				<property>
+					<name>referenceextraction_patent_number_of_emitted_filesa</name>
+					<value>1</value>
+				</property>
+				<property>
+					<name>webcrawlNumberOfEmittedFiles</name>
+					<value>1</value>
+				</property>
 			</configuration>
 		</sub-workflow>
 		<ok to="consumer" />

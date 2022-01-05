@@ -1,64 +1,35 @@
 package eu.dnetlib.iis.common.utils;
 
-import eu.dnetlib.iis.common.spark.JavaSparkContextFactory;
-import org.apache.commons.io.FileUtils;
-import org.apache.hadoop.conf.Configuration;
+import eu.dnetlib.iis.common.java.io.SequenceFileTextValueReader;
+import eu.dnetlib.iis.common.spark.TestWithSharedSparkContext;
 import org.apache.hadoop.io.Text;
-import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
-import org.apache.spark.api.java.JavaSparkContext;
-import org.junit.*;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.opentest4j.AssertionFailedError;
 import scala.Tuple2;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
-public class ListTestUtilsTest {
-    private static JavaSparkContext sc;
-    private static Configuration configuration;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
-    private Path workingDir;
-    private Path inputDir;
+public class ListTestUtilsTest extends TestWithSharedSparkContext {
 
-    @BeforeClass
-    public static void beforeClass() {
-        SparkConf conf = new SparkConf();
-        conf.setMaster("local");
-        conf.set("spark.driver.host", "localhost");
-        conf.setAppName(ListTestUtilsTest.class.getSimpleName());
-        sc = JavaSparkContextFactory.withConfAndKryo(conf);
-        configuration = new Configuration();
-    }
+    @TempDir
+    public Path workingDir;
 
-    @Before
-    public void before() throws IOException {
-        workingDir = Files.createTempDirectory(String.format("%s_", ListTestUtilsTest.class.getSimpleName()));
-        inputDir = workingDir.resolve("input");
-    }
-
-    @After
-    public void after() throws IOException {
-        FileUtils.deleteDirectory(workingDir.toFile());
-    }
-
-    @AfterClass
-    public static void afterClass() {
-        sc.stop();
-    }
-
-    @Test(expected = ComparisonFailure.class)
+    @Test
     public void compareShouldThrowExceptionWhenListsNotMatch() {
         //given
         List<String> left = Arrays.asList("a", "b");
         List<String> right = Arrays.asList("a", "x");
 
         //when
-        ListTestUtils.compareLists(left, right);
+        assertThrows(AssertionFailedError.class, () -> ListTestUtils.compareLists(left, right));
     }
 
     @Test
@@ -79,12 +50,13 @@ public class ListTestUtilsTest {
                 new Tuple2<>("2L", "2R"),
                 new Tuple2<>("3L", "3R")
         );
-        JavaPairRDD<Text, Text> pairs = sc.parallelize(tuples)
+        JavaPairRDD<Text, Text> pairs = jsc().parallelize(tuples)
                 .mapToPair(x -> x.copy(new Text(x._1), new Text(x._2)));
-        RDDUtils.saveTextPairRDD(pairs, 2, inputDir.toString(), configuration);
+        Path inputDir = workingDir.resolve("input");
+        RDDUtils.saveTextPairRDD(pairs, 2, inputDir.toString(), jsc().hadoopConfiguration());
 
         //when
-        List<Text> values = ListTestUtils.readValues(inputDir.toString(), Function.identity());
+        List<Text> values = IteratorUtils.toList(SequenceFileTextValueReader.fromFile(inputDir.toString()));
 
         //then
         ListTestUtils

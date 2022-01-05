@@ -1,5 +1,31 @@
 package eu.dnetlib.iis.wf.affmatching;
 
+import eu.dnetlib.iis.common.SlowTest;
+import eu.dnetlib.iis.importer.schemas.Organization;
+import eu.dnetlib.iis.importer.schemas.ProjectToOrganization;
+import eu.dnetlib.iis.metadataextraction.schemas.ExtractedDocumentMetadata;
+import eu.dnetlib.iis.referenceextraction.project.schemas.DocumentToProject;
+import eu.dnetlib.iis.wf.affmatching.model.MatchedOrganization;
+import eu.dnetlib.iis.wf.affmatching.model.SimpleAffMatchResult;
+import eu.dnetlib.iis.wf.affmatching.read.AffiliationConverter;
+import eu.dnetlib.iis.wf.affmatching.read.AffiliationReader;
+import eu.dnetlib.iis.wf.affmatching.read.AffiliationReaderFactory;
+import eu.dnetlib.iis.wf.affmatching.read.IisAffiliationReader;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import pl.edu.icm.sparkutils.test.SparkJob;
+import pl.edu.icm.sparkutils.test.SparkJobBuilder;
+import pl.edu.icm.sparkutils.test.SparkJobExecutor;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.List;
+import java.util.function.BiFunction;
+
 import static com.google.common.collect.ImmutableList.of;
 import static com.google.common.collect.Lists.newArrayList;
 import static eu.dnetlib.iis.common.utils.AvroTestUtils.createLocalAvroDataStore;
@@ -7,31 +33,6 @@ import static eu.dnetlib.iis.common.utils.AvroTestUtils.readLocalAvroDataStore;
 import static eu.dnetlib.iis.common.utils.JsonAvroTestUtils.readMultipleJsonDataStores;
 import static eu.dnetlib.iis.common.utils.JsonTestUtils.readMultipleJsons;
 import static java.util.stream.Collectors.toList;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.List;
-
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-
-import com.google.common.io.Files;
-
-import eu.dnetlib.iis.common.IntegrationTest;
-import eu.dnetlib.iis.importer.schemas.Organization;
-import eu.dnetlib.iis.importer.schemas.ProjectToOrganization;
-import eu.dnetlib.iis.metadataextraction.schemas.ExtractedDocumentMetadata;
-import eu.dnetlib.iis.referenceextraction.project.schemas.DocumentToProject;
-import eu.dnetlib.iis.wf.affmatching.model.MatchedOrganization;
-import eu.dnetlib.iis.wf.affmatching.model.SimpleAffMatchResult;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import pl.edu.icm.sparkutils.test.SparkJob;
-import pl.edu.icm.sparkutils.test.SparkJobBuilder;
-import pl.edu.icm.sparkutils.test.SparkJobExecutor;
 
 /**
  * Affiliation matching module test that measures quality of matching.<br/>
@@ -46,7 +47,7 @@ import pl.edu.icm.sparkutils.test.SparkJobExecutor;
  * 
  * @author madryk
  */
-@Category(IntegrationTest.class)
+@SlowTest
 public class AffMatchingDocOrgQualityTest {
 
     private static final Logger logger = LoggerFactory.getLogger(AffMatchingDocOrgQualityTest.class);
@@ -54,8 +55,9 @@ public class AffMatchingDocOrgQualityTest {
     private final static String INPUT_DATA_DIR_PATH = "src/test/resources/experimentalData/input";
      
     private SparkJobExecutor executor = new SparkJobExecutor();
-    
-    private File workingDir;
+
+    @TempDir
+    public File workingDir;
     
     private String inputOrgDirPath;
     
@@ -75,10 +77,8 @@ public class AffMatchingDocOrgQualityTest {
     
     
     
-    @Before
+    @BeforeEach
     public void before() {
-        
-        workingDir = Files.createTempDir();
         
         inputOrgDirPath = workingDir + "/affiliation_matching/input/organizations";
         inputAffDirPath = workingDir + "/affiliation_matching/input/affiliations";
@@ -89,18 +89,21 @@ public class AffMatchingDocOrgQualityTest {
         outputReportPath = workingDir + "/affiliation_matching/report";
         
     }
-    
-    
-    @After
-    public void after() throws IOException {
-        
-        FileUtils.deleteDirectory(workingDir);
-        
-    }
-    
-    
+
     //------------------------ TESTS --------------------------
-    
+
+    public static class AffiliationReaderFactoryForTest implements AffiliationReaderFactory {
+
+        @Override
+        public AffiliationReader create() {
+            IisAffiliationReader affiliationReader = new IisAffiliationReader();
+            AffiliationConverter affiliationConverter = new AffiliationConverter();
+            affiliationConverter.setDocumentAcceptor((position, extractedDocumentMetadata) -> true);
+            affiliationReader.setAffiliationConverter(affiliationConverter);
+            return affiliationReader;
+        }
+    }
+
     @Test
     public void affiliationMatchingJob_combined_data() throws IOException {
         
@@ -148,6 +151,8 @@ public class AffMatchingDocOrgQualityTest {
                 .addArg("-inputAvroProjOrgPath", inputProjOrgDirPath)
                 .addArg("-outputAvroPath", outputDirPath)
                 .addArg("-outputAvroReportPath", outputReportPath)
+                .addArg("-D" + AffMatchingJob.PARAM_AFF_MATCHING_SERVICE_AFFILIATION_READER_FACTORY_CLASSNAME,
+                        "eu.dnetlib.iis.wf.affmatching.AffMatchingDocOrgQualityTest$AffiliationReaderFactoryForTest")
                 .addJobProperty("spark.driver.host", "localhost")
                 .build();
         

@@ -1,31 +1,27 @@
 package eu.dnetlib.iis.wf.referenceextraction.softwareurl;
 
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-
 import eu.dnetlib.iis.common.AbstractOozieWorkflowTestCase;
-import eu.dnetlib.iis.common.IntegrationTest;
+import org.junit.jupiter.api.Test;
 
 /**
  * 
  * @author mhorst
  *
  */
-@Category(IntegrationTest.class)
 public class SoftwareUrlRefExtractionWfTest extends AbstractOozieWorkflowTestCase {
 
     @Test
-    public void testMainWorkflow() throws Exception {
+    public void testMainWorkflow() {
         testWorkflow("eu/dnetlib/iis/wf/referenceextraction/softwareurl/main/sampletest");
     }
 
     @Test
-    public void testMainWorkflowWithoutReferences() throws Exception {
+    public void testMainWorkflowWithoutReferences() {
         testWorkflow("eu/dnetlib/iis/wf/referenceextraction/softwareurl/main/sampletest_without_references");
     }
 
     @Test
-    public void testMainWorkflowEmptyInput() throws Exception {
+    public void testMainWorkflowEmptyInput() {
         testWorkflow("eu/dnetlib/iis/wf/referenceextraction/softwareurl/main/sampletest_empty_input");
     }
 }

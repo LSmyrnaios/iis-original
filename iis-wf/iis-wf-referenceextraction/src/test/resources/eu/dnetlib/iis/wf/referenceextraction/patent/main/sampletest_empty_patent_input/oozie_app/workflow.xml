@@ -52,7 +52,7 @@
                 </property>
                 <property>
                     <name>patentMetadataRetrieverFacadeFactoryClassname</name>
-                    <value>eu.dnetlib.iis.wf.referenceextraction.patent.ClassPathBasedPatentServiceFacadeFactory</value>
+                    <value>eu.dnetlib.iis.wf.referenceextraction.patent.TestServiceFacadeFactories$FileContentReturningFacadeFactory</value>
                 </property>
                 <property>
                     <name>patentLockManagerFactoryClassName</name>
@@ -81,6 +81,10 @@
                 <property>
                     <name>cacheRootDir</name>
                     <value>${workingDir}/referenceextraction_patent/working_dir</value>
+                </property>
+                <property>
+                    <name>referenceextraction_patent_number_of_emitted_filesa</name>
+                    <value>1</value>
                 </property>
             </configuration>
         </sub-workflow>

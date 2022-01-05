@@ -1,27 +1,22 @@
 package eu.dnetlib.iis.wf.ingest.pmc.metadata;
 
-import static eu.dnetlib.iis.wf.ingest.pmc.metadata.AssertExtractedDocumentMetadata.*;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-
-import java.io.InputStreamReader;
-import java.io.Reader;
-
-import javax.xml.parsers.SAXParser;
-import javax.xml.parsers.SAXParserFactory;
-
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.xml.sax.InputSource;
-import org.xml.sax.XMLReader;
-
 import com.google.common.collect.Lists;
-
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
 import eu.dnetlib.iis.ingest.pmc.metadata.schemas.ExtractedDocumentMetadata;
 import eu.dnetlib.iis.ingest.pmc.metadata.schemas.ReferenceBasicMetadata;
 import eu.dnetlib.iis.ingest.pmc.metadata.schemas.ReferenceMetadata;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.xml.sax.InputSource;
+import org.xml.sax.XMLReader;
+
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
+import java.io.Reader;
+
+import static eu.dnetlib.iis.wf.ingest.pmc.metadata.AssertExtractedDocumentMetadata.assertAuthor;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link JatsXmlHandler} test class.
@@ -38,7 +33,7 @@ public class JatsXmlHandlerTest {
 
 	static final String xmlResourcesRootClassPath = "/eu/dnetlib/iis/wf/ingest/pmc/metadata/data/";
 
-	@Before
+	@BeforeEach
 	public void init() throws Exception {
 		// initializing sax parser
 		SAXParserFactory saxFactory = SAXParserFactory.newInstance();
@@ -55,7 +50,7 @@ public class JatsXmlHandlerTest {
 		jatsXmlHandler = new JatsXmlHandler(metaBuilder);
 	}
 
-	@After
+	@AfterEach
 	public void clean() throws Exception {
 		if (fileReader != null) {
 			fileReader.close();
@@ -65,8 +60,8 @@ public class JatsXmlHandlerTest {
 
 	@Test
 	public void testParsingJats10() throws Exception {
-		fileReader = new InputStreamReader(JatsXmlHandler.class.getResourceAsStream(
-				xmlResourcesRootClassPath + "document_jats10.xml"), "UTF-8");
+		fileReader = ClassPathResourceProvider
+				.getResourceReader(xmlResourcesRootClassPath + "document_jats10.xml");
 		InputSource inputSource = new InputSource(fileReader);
 		saxParser.parse(inputSource, jatsXmlHandler);
 		checkJats10Metadata(metaBuilder.build());
@@ -74,8 +69,8 @@ public class JatsXmlHandlerTest {
 
 	@Test
 	public void testParsingJats10NestedInOAI() throws Exception {
-		fileReader = new InputStreamReader(JatsXmlHandler.class.getResourceAsStream(
-				xmlResourcesRootClassPath + "document_jats10_nested_in_oai.xml"), "UTF-8");
+		fileReader = ClassPathResourceProvider
+				.getResourceReader(xmlResourcesRootClassPath + "document_jats10_nested_in_oai.xml");
 		InputSource inputSource = new InputSource(fileReader);
 		saxParser.parse(inputSource, jatsXmlHandler);
 		checkJats10Metadata(metaBuilder.build());
@@ -83,8 +78,8 @@ public class JatsXmlHandlerTest {
 
 	@Test
 	public void testParsingJats23NestedInOAI() throws Exception {
-		fileReader = new InputStreamReader(JatsXmlHandler.class.getResourceAsStream(
-				xmlResourcesRootClassPath + "document_jats23_nested_in_oai.xml"), "UTF-8");
+		fileReader = ClassPathResourceProvider
+				.getResourceReader(xmlResourcesRootClassPath + "document_jats23_nested_in_oai.xml");
 		InputSource inputSource = new InputSource(fileReader);
 		saxParser.parse(inputSource, jatsXmlHandler);
 		ExtractedDocumentMetadata meta = metaBuilder.build();
@@ -136,8 +131,8 @@ public class JatsXmlHandlerTest {
 
 	@Test
 	public void testParsingLargeFile() throws Exception {
-		fileReader = new InputStreamReader(JatsXmlHandler.class.getResourceAsStream(
-				xmlResourcesRootClassPath + "od_______908__365a50343d53774f68fa13800349d372.xml"), "UTF-8");
+		fileReader = ClassPathResourceProvider
+				.getResourceReader(xmlResourcesRootClassPath + "od_______908__365a50343d53774f68fa13800349d372.xml");
 		InputSource inputSource = new InputSource(fileReader);
 		saxParser.parse(inputSource, jatsXmlHandler);
 		ExtractedDocumentMetadata meta = metaBuilder.build();
@@ -150,8 +145,8 @@ public class JatsXmlHandlerTest {
 
 	@Test
 	public void testParsingAuthorsWithAffiliation() throws Exception {
-		fileReader = new InputStreamReader(JatsXmlHandler.class.getResourceAsStream(
-				xmlResourcesRootClassPath + "document_with_affiliations.xml"), "UTF-8");
+		fileReader = ClassPathResourceProvider
+				.getResourceReader(xmlResourcesRootClassPath + "document_with_affiliations.xml");
 		InputSource inputSource = new InputSource(fileReader);
 		saxParser.parse(inputSource, jatsXmlHandler);
 		ExtractedDocumentMetadata meta = metaBuilder.build();
@@ -192,8 +187,8 @@ public class JatsXmlHandlerTest {
 
 	@Test
 	public void testSingleRefParsing() throws Exception {
-		fileReader = new InputStreamReader(JatsXmlHandler.class.getResourceAsStream(
-				xmlResourcesRootClassPath + "single-ref-document.xml"), "UTF-8");
+		fileReader = ClassPathResourceProvider
+				.getResourceReader(xmlResourcesRootClassPath + "single-ref-document.xml");
 		InputSource inputSource = new InputSource(fileReader);
 		saxParser.parse(inputSource, jatsXmlHandler);
 		ExtractedDocumentMetadata meta = metaBuilder.build();
@@ -220,8 +215,8 @@ public class JatsXmlHandlerTest {
 	@Test
 	public void testMixedTitleParsing() throws Exception {
 		// files causing parsing problems
-		fileReader = new InputStreamReader(JatsXmlHandler.class.getResourceAsStream(
-				xmlResourcesRootClassPath + "od_______908__0451fa1ded79a63729296731e53335c0.xml"), "UTF-8");
+		fileReader = ClassPathResourceProvider
+				.getResourceReader(xmlResourcesRootClassPath + "od_______908__0451fa1ded79a63729296731e53335c0.xml");
 		InputSource inputSource = new InputSource(fileReader);
 		saxParser.parse(inputSource, jatsXmlHandler);
 		ExtractedDocumentMetadata meta = metaBuilder.build();
@@ -247,8 +242,8 @@ public class JatsXmlHandlerTest {
 	@Test
 	public void testElementCitation() throws Exception {
 		// files causing parsing problems
-		fileReader = new InputStreamReader(JatsXmlHandler.class.getResourceAsStream(
-				xmlResourcesRootClassPath + "od_______908__0452195ccf851072fd097fc49bfbb9da.xml"), "UTF-8");
+		fileReader = ClassPathResourceProvider
+				.getResourceReader(xmlResourcesRootClassPath + "od_______908__0452195ccf851072fd097fc49bfbb9da.xml");
 		InputSource inputSource = new InputSource(fileReader);
 		saxParser.parse(inputSource, jatsXmlHandler);
 		ExtractedDocumentMetadata meta = metaBuilder.build();

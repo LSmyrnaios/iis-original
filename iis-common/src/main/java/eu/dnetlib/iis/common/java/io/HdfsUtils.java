@@ -49,5 +49,4 @@ public final class HdfsUtils {
                 .map(x -> x.getPath().toString())
                 .collect(Collectors.toList());
     }
-
 }

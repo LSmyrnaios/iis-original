@@ -14,7 +14,7 @@ public class RDDUtils {
     }
 
     /**
-     * Saves a given pair RDD as a sequence file.
+     * Saves a given text pair RDD as a sequence file, repartitioning RDD to the given number of output files.
      *
      * @param pairs               RDD of Text pairs to save.
      * @param numberOfOutputFiles Number of output files.
@@ -23,7 +23,19 @@ public class RDDUtils {
      */
     public static void saveTextPairRDD(JavaPairRDD<Text, Text> pairs, Integer numberOfOutputFiles, String outputPath, Configuration conf) {
         pairs
-                .coalesce(numberOfOutputFiles)
+                .repartition(numberOfOutputFiles)
+                .saveAsNewAPIHadoopFile(outputPath, Text.class, Text.class, SequenceFileOutputFormat.class, conf);
+    }
+
+    /**
+     * Saves a given text pair RDD as a sequence file.
+     *
+     * @param pairs      RDD of Text pairs to save.
+     * @param outputPath RDD saving location.
+     * @param conf       Hadoop configuration instance.
+     */
+    public static void saveTextPairRDD(JavaPairRDD<Text, Text> pairs, String outputPath, Configuration conf) {
+        pairs
                 .saveAsNewAPIHadoopFile(outputPath, Text.class, Text.class, SequenceFileOutputFormat.class, conf);
     }
 }

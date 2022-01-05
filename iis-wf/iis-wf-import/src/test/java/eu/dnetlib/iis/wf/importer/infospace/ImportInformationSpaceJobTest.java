@@ -1,49 +1,38 @@
 package eu.dnetlib.iis.wf.importer.infospace;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Objects;
-
-import org.apache.commons.io.FileUtils;
-import org.apache.spark.SparkConf;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import eu.dnetlib.dhp.schema.oaf.Oaf;
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
+import eu.dnetlib.iis.common.java.io.DataStore;
+import eu.dnetlib.iis.common.java.io.HdfsTestUtils;
+import eu.dnetlib.iis.common.schemas.IdentifierMapping;
+import eu.dnetlib.iis.common.schemas.ReportEntry;
+import eu.dnetlib.iis.common.spark.TestWithSharedSparkSession;
+import eu.dnetlib.iis.common.utils.AvroAssertTestUtil;
+import eu.dnetlib.iis.importer.schemas.*;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.spark.api.java.function.MapFunction;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Encoders;
-import org.apache.spark.sql.SparkSession;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
-import eu.dnetlib.dhp.schema.oaf.Oaf;
-import eu.dnetlib.iis.common.IntegrationTest;
-import eu.dnetlib.iis.common.schemas.IdentifierMapping;
-import eu.dnetlib.iis.common.schemas.ReportEntry;
-import eu.dnetlib.iis.common.utils.AvroAssertTestUtil;
-import eu.dnetlib.iis.importer.schemas.DataSetReference;
-import eu.dnetlib.iis.importer.schemas.DocumentMetadata;
-import eu.dnetlib.iis.importer.schemas.DocumentToProject;
-import eu.dnetlib.iis.importer.schemas.Organization;
-import eu.dnetlib.iis.importer.schemas.Project;
-import eu.dnetlib.iis.importer.schemas.ProjectToOrganization;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * @author mhorst
  *
  */
-@Category(IntegrationTest.class)
-public class ImportInformationSpaceJobTest {
+public class ImportInformationSpaceJobTest extends TestWithSharedSparkSession {
 
-    private static SparkSession spark;
+    @TempDir
+    public Path workingDir;
 
-    private Path workingDir;
     private Path inputDir;
     private Path inputGraphDir;
     private Path outputDir;
@@ -55,26 +44,12 @@ public class ImportInformationSpaceJobTest {
     private static final String OUTPUT_NAME_ORGANIZATION = "organzation";
     private static final String OUTPUT_NAME_DOC_PROJ = "doc-proj";
     private static final String OUTPUT_NAME_PROJ_ORG = "proj-org";
-    private static final String OUTPUT_NAME_DEDUP = "dedup";
+    private static final String OUTPUT_NAME_IDENTIFIER = "identifier";
     
+    @BeforeEach
+    public void beforeEach() {
+        super.beforeEach();
 
-    private ClassLoader cl = getClass().getClassLoader();
-
-    @BeforeClass
-    public static void beforeClass() throws IOException {
-        SparkConf conf = new SparkConf();
-        conf.setAppName(ImportInformationSpaceJobTest.class.getSimpleName());
-        conf.setMaster("local");
-        conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
-        conf.registerKryoClasses(OafModelUtils.provideOafClasses());
-
-        spark = SparkSession.builder().config(conf).getOrCreate();
-
-    }
-
-    @Before
-    public void before() throws IOException {
-        workingDir = Files.createTempDirectory("test_import_info_space");
         inputDir = workingDir.resolve("input");
         inputGraphDir = inputDir.resolve("graph");
 
@@ -82,16 +57,6 @@ public class ImportInformationSpaceJobTest {
         outputReportDir = workingDir.resolve("output_report");
     }
 
-    @After
-    public void after() throws IOException {
-        FileUtils.deleteDirectory(workingDir.toFile());
-    }
-
-    @AfterClass
-    public static void afterAll() {
-        spark.stop();
-    }
-    
     @Test
     public void testImportFromTextGraph() throws Exception {
         testImportFromGraph("json");
@@ -124,7 +89,7 @@ public class ImportInformationSpaceJobTest {
         
         // when
         ImportInformationSpaceJob.main(new String[]{
-                "-sparkSessionManagedOutside",
+                "-sharedSparkSession",
                 "-skipDeletedByInference", Boolean.TRUE.toString(),
                 "-trustLevelThreshold", "0.7",
                 "-inferenceProvenanceBlacklist", "iis",
@@ -136,20 +101,27 @@ public class ImportInformationSpaceJobTest {
                 "-outputNameDatasetMeta", OUTPUT_NAME_DATASET,
                 "-outputNameDocumentProject", OUTPUT_NAME_DOC_PROJ,
                 "-outputNameProject", OUTPUT_NAME_PROJECT,
-                "-outputNameDedupMapping", OUTPUT_NAME_DEDUP,
+                "-outputNameIdentifierMapping", OUTPUT_NAME_IDENTIFIER,
                 "-outputNameOrganization", OUTPUT_NAME_ORGANIZATION,
-                "-outputNameProjectOrganization", OUTPUT_NAME_PROJ_ORG
+                "-outputNameProjectOrganization", OUTPUT_NAME_PROJ_ORG,
+                "-maxDescriptionLength", "1000",
+                "-maxTitlesSize", "1",
+                "-maxTitleLength", "75",
+                "-maxAuthorsSize", "25",
+                "-maxAuthorFullnameLength", "25",
+                "-maxKeywordsSize", "5",
+                "-maxKeywordLength", "15"
         });
         
         // then
-        String expectedDocumentPath = Objects.requireNonNull(cl.getResource("eu/dnetlib/iis/wf/importer/infospace/output/document.json")).getFile();
-        String expectedDatasetPath = Objects.requireNonNull(cl.getResource("eu/dnetlib/iis/wf/importer/infospace/output/dataset.json")).getFile();
-        String expectedProjectPath = Objects.requireNonNull(cl.getResource("eu/dnetlib/iis/wf/importer/infospace/output/project.json")).getFile();
-        String expectedOrganizationPath = Objects.requireNonNull(cl.getResource("eu/dnetlib/iis/wf/importer/infospace/output/organization.json")).getFile();
-        String expectedDocProjectPath = Objects.requireNonNull(cl.getResource("eu/dnetlib/iis/wf/importer/infospace/output/docproject.json")).getFile();
-        String expectedProjOrgPath = Objects.requireNonNull(cl.getResource("eu/dnetlib/iis/wf/importer/infospace/output/project_organization.json")).getFile();
-        String expectedDedupMappingPath = Objects.requireNonNull(cl.getResource("eu/dnetlib/iis/wf/importer/infospace/output/dedupmapping.json")).getFile();
-        String expectedReportPath = Objects.requireNonNull(cl.getResource("eu/dnetlib/iis/wf/importer/infospace/output/report.json")).getFile();
+        String expectedDocumentPath = ClassPathResourceProvider.getResourcePath("eu/dnetlib/iis/wf/importer/infospace/output/document.json");
+        String expectedDatasetPath = ClassPathResourceProvider.getResourcePath("eu/dnetlib/iis/wf/importer/infospace/output/dataset.json");
+        String expectedProjectPath = ClassPathResourceProvider.getResourcePath("eu/dnetlib/iis/wf/importer/infospace/output/project.json");
+        String expectedOrganizationPath = ClassPathResourceProvider.getResourcePath("eu/dnetlib/iis/wf/importer/infospace/output/organization.json");
+        String expectedDocProjectPath = ClassPathResourceProvider.getResourcePath("eu/dnetlib/iis/wf/importer/infospace/output/docproject.json");
+        String expectedProjOrgPath = ClassPathResourceProvider.getResourcePath("eu/dnetlib/iis/wf/importer/infospace/output/project_organization.json");
+        String expectedIdentifierMappingPath = ClassPathResourceProvider.getResourcePath("eu/dnetlib/iis/wf/importer/infospace/output/identifiermapping.json");
+        String expectedReportPath = ClassPathResourceProvider.getResourcePath("eu/dnetlib/iis/wf/importer/infospace/output/report.json");
         
         AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputDir.resolve(OUTPUT_NAME_DOCMETA).toString(), expectedDocumentPath, DocumentMetadata.class);
         AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputDir.resolve(OUTPUT_NAME_DATASET).toString(), expectedDatasetPath, DataSetReference.class);
@@ -157,16 +129,18 @@ public class ImportInformationSpaceJobTest {
         AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputDir.resolve(OUTPUT_NAME_ORGANIZATION).toString(), expectedOrganizationPath, Organization.class);
         AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputDir.resolve(OUTPUT_NAME_DOC_PROJ).toString(), expectedDocProjectPath, DocumentToProject.class);
         AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputDir.resolve(OUTPUT_NAME_PROJ_ORG).toString(), expectedProjOrgPath, ProjectToOrganization.class);
-        AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputDir.resolve(OUTPUT_NAME_DEDUP).toString(), expectedDedupMappingPath, IdentifierMapping.class);
-        
+        AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputDir.resolve(OUTPUT_NAME_IDENTIFIER).toString(), expectedIdentifierMappingPath, IdentifierMapping.class);
+
+        assertEquals(1,
+                HdfsTestUtils.countFiles(new Configuration(), outputReportDir.toString(), DataStore.AVRO_FILE_EXT));
         AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputReportDir.toString(), expectedReportPath, ReportEntry.class);
     }
     
     
     private <T extends Oaf> void createGraphTableFor(String inputGraphTableJsonDumpPath,
             String inputGraphTableDirRelativePath, Class<T> clazz, String format) {
-        Path inputGraphTableJsonDumpFile = Paths
-                .get(Objects.requireNonNull(cl.getResource(inputGraphTableJsonDumpPath)).getFile());
+        Path inputGraphTableJsonDumpFile = Paths.get(
+                ClassPathResourceProvider.getResourcePath(inputGraphTableJsonDumpPath));
 
         Dataset<T> inputGraphTableDS = readGraphTableFromJSON(inputGraphTableJsonDumpFile, clazz);
         Path inputGraphTableDir = inputGraphDir.resolve(inputGraphTableDirRelativePath);
@@ -174,9 +148,9 @@ public class ImportInformationSpaceJobTest {
         inputGraphTableDS.write().format(format).save(inputGraphTableDir.toString());
     }
     
-    private static <T extends Oaf> Dataset<T> readGraphTableFromJSON(Path path, Class<T> clazz) {
+    private <T extends Oaf> Dataset<T> readGraphTableFromJSON(Path path, Class<T> clazz) {
         ObjectMapper objectMapper = new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
-        return spark.read().format("json").load(path.toString()).toJSON()
+        return spark().read().format("json").load(path.toString()).toJSON()
                 .map((MapFunction<String, T>) json -> objectMapper.readValue(json, clazz), Encoders.bean(clazz));
     }
     

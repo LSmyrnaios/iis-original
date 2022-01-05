@@ -2,18 +2,18 @@ package eu.dnetlib.iis.wf.report.pushgateway.process;
 
 import eu.dnetlib.iis.wf.report.pushgateway.converter.LabelConf;
 import eu.dnetlib.iis.wf.report.pushgateway.converter.LabeledMetricConf;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class PushMetricsProcessLabeledMetricConfByPatternProducerTest {
 
     @Test
@@ -68,12 +68,11 @@ public class PushMetricsProcessLabeledMetricConfByPatternProducerTest {
     public void shouldProduceNonEmpty() {
         // given
         PushMetricsProcess.LabeledMetricConfByPatternProducer labeledMetricConfByPatternProducer = new PushMetricsProcess.LabeledMetricConfByPatternProducer();
-        String labeledMetricsPropertiesPath = Objects.requireNonNull(this.getClass().getClassLoader()
-                .getResource("eu/dnetlib/iis/wf/report/pushgateway/process/test/oozie_app/labeled_metrics.properties")).getFile();
+        String labeledMetricsPropertiesPath = "eu/dnetlib/iis/wf/report/pushgateway/process/test/oozie_app/labeled_metrics.properties";
 
         // when
         Optional<Map<String, LabeledMetricConf>> result = labeledMetricConfByPatternProducer
-                .create(Collections.singletonMap("labeledMetricsPropertiesFile", String.format("file:%s", labeledMetricsPropertiesPath)));
+                .create(Collections.singletonMap("labeledMetricsPropertiesFile", labeledMetricsPropertiesPath));
 
         // then
         assertTrue(result.isPresent());

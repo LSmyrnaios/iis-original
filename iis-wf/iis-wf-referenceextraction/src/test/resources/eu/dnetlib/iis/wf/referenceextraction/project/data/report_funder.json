@@ -9,6 +9,11 @@
   "value": "1"
 }
 {
+  "key": "processing.referenceExtraction.project.references.byfunder.chist-era",
+  "type": "COUNTER",
+  "value": "1"
+}
+{
   "key": "processing.referenceExtraction.project.references.byfunder.cihr",
   "type": "COUNTER",
   "value": "2"
@@ -34,9 +39,9 @@
   "value": "1"
 }
 {
-  "key": "processing.referenceExtraction.project.references.byfunder.gsrt",
+  "key": "processing.referenceExtraction.project.references.byfunder.gsri",
   "type": "COUNTER",
-  "value": "1"
+  "value": "2"
 }
 {
   "key": "processing.referenceExtraction.project.references.byfunder.innoviris",
@@ -69,12 +74,17 @@
   "value": "1"
 }
 {
-  "key": "processing.referenceExtraction.project.references.byfunder.rcuk",
+  "key": "processing.referenceExtraction.project.references.byfunder.ukri",
   "type": "COUNTER",
   "value": "1"
 }
 {
   "key": "processing.referenceExtraction.project.references.byfunder.rsf",
+  "type": "COUNTER",
+  "value": "1"
+}
+{
+  "key": "processing.referenceExtraction.project.references.byfunder.sfrs",
   "type": "COUNTER",
   "value": "1"
 }
@@ -111,5 +121,5 @@
 {
    "key": "processing.referenceExtraction.project.references.total",
    "type": "COUNTER",
-   "value": "59"
+   "value": "62"
 }

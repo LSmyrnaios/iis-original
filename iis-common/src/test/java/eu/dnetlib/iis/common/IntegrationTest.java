@@ -1,8 +1,17 @@
 package eu.dnetlib.iis.common;
 
+import org.junit.jupiter.api.Tag;
+
+import java.lang.annotation.*;
+
 /**
  * Integration test markup.
- * @author mhorst
- *
+ * <p>
+ * Integration tests are tests to be run using cluster environment.
  */
-public interface IntegrationTest {}
+@Inherited
+@Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Tag("IntegrationTest")
+public @interface IntegrationTest {
+}

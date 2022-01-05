@@ -1,13 +1,12 @@
 package eu.dnetlib.iis.wf.referenceextraction.patent.parser;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
-
-import java.io.StringWriter;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
+import com.google.common.collect.Lists;
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
+import eu.dnetlib.iis.referenceextraction.patent.schemas.Patent;
+import org.apache.commons.collections.CollectionUtils;
+import org.junit.jupiter.api.Test;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -17,16 +16,10 @@ import javax.xml.transform.TransformerException;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
+import java.io.StringWriter;
+import java.util.List;
 
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.io.IOUtils;
-import org.junit.Test;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-
-import com.google.common.collect.Lists;
-
-import eu.dnetlib.iis.referenceextraction.patent.schemas.Patent;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * {@link OpsPatentMetadataXPathBasedParser} test class.
@@ -46,8 +39,8 @@ public class OpsPatentMetadataXPathBasedParserTest {
     @Test
     public void testExtractMetadataFromValidXMLfile() throws Exception {
         // given
-        String xmlContents = IOUtils.toString(OpsPatentMetadataXPathBasedParser.class
-                .getResourceAsStream(xmlResourcesRootClassPath + "WO.0042078.A1.xml"), StandardCharsets.UTF_8.name());
+        String xmlContents = ClassPathResourceProvider
+                .getResourceContent(xmlResourcesRootClassPath + "WO.0042078.A1.xml");
 
         // execute
         Patent.Builder patent = parser.parse(xmlContents, getPatentBuilderInitializedWithRequiredFields());

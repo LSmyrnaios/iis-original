@@ -154,6 +154,11 @@
             <value>$UNDEFINED$</value>
             <description>action-set identifier of exported data containing patent entities</description>
         </property>
+        <property>
+            <name>action_set_id_citation_relations</name>
+            <value>$UNDEFINED$</value>
+            <description>action-set identifier of exported data containing citation relations</description>
+        </property>
         <!-- trust level threshold section -->
         <property>
             <name>trust_level_threshold</name>
@@ -194,6 +199,11 @@
             <name>trust_level_threshold_document_patent</name>
             <value>$UNDEFINED$</value>
             <description>document to patent trust level threshold</description>
+        </property>
+        <property>
+            <name>trust_level_threshold_document_referencedDocuments</name>
+            <value>$UNDEFINED$</value>
+            <description>document_referencedDocuments trust level threshold</description>
         </property>
 
         <!-- -->
@@ -279,6 +289,7 @@
     <fork name="export_fork">
         <path start="decision_software_exporter"/>
         <path start="decision_patent_exporter"/>
+        <path start="decision_citation_relation_exporter"/>
     </fork>
 
     <!-- software references and entities export section -->
@@ -336,19 +347,29 @@
         <error to="fail"/>
     </action>
 
-    <join name="export_join" to="distcp_output"/>
+    <decision name="decision_citation_relation_exporter">
+        <switch>
+            <case to="citation_relation_exporter">${input_citations ne "$UNDEFINED$"}</case>
+            <default to="export_join" />
+        </switch>
+    </decision>
 
-    <action name="distcp_output">
-        <distcp xmlns="uri:oozie:distcp-action:0.2">
-            <arg>-Dmapreduce.map.memory.mb=${output_remote_distcp_memory_mb}</arg>
-            <arg>-pb</arg>
-            <arg>-overwrite</arg>
-            <arg>${nameNode}${workingDir}/output</arg>
-            <arg>${output_remote_location}</arg>
-        </distcp>
-        <ok to="primary_export_push_reports" />
-        <error to="fail" />
+    <action name="citation_relation_exporter">
+        <sub-workflow>
+            <app-path>${wf:appPath()}/export_citation_relation</app-path>
+            <propagate-configuration/>
+            <configuration>
+                <property>
+                    <name>output_root_relations</name>
+                    <value>${workingDir}/output/relations_citation</value>
+                </property>
+            </configuration>
+        </sub-workflow>
+        <ok to="export_join"/>
+        <error to="fail"/>
     </action>
+
+    <join name="export_join" to="primary_export_push_reports"/>
 
     <action name="primary_export_push_reports">
         <sub-workflow>
@@ -361,8 +382,20 @@
                 </property>
             </configuration>
         </sub-workflow>
-        <ok to="end"/>
+        <ok to="distcp_output"/>
         <error to="fail"/>
+    </action>
+
+    <action name="distcp_output">
+        <distcp xmlns="uri:oozie:distcp-action:0.2">
+            <arg>-Dmapreduce.map.memory.mb=${output_remote_distcp_memory_mb}</arg>
+            <arg>-pb</arg>
+            <arg>-overwrite</arg>
+            <arg>${nameNode}${workingDir}/output</arg>
+            <arg>${output_remote_location}</arg>
+        </distcp>
+        <ok to="end" />
+        <error to="fail" />
     </action>
 
     <kill name="fail">

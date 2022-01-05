@@ -1,34 +1,17 @@
 package eu.dnetlib.iis.wf.referenceextraction.patent;
 
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_CONSUMER_KEY;
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_CONSUMER_SECRET;
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_SERVICE_ENDPOINT_AUTH_HOST;
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_SERVICE_ENDPOINT_AUTH_PORT;
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_SERVICE_ENDPOINT_AUTH_SCHEME;
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_SERVICE_ENDPOINT_AUTH_URI_ROOT;
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_SERVICE_ENDPOINT_CONNECTION_TIMEOUT;
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_SERVICE_ENDPOINT_OPS_HOST;
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_SERVICE_ENDPOINT_OPS_PORT;
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_SERVICE_ENDPOINT_OPS_SCHEME;
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_SERVICE_ENDPOINT_OPS_URI_ROOT;
-import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.PARAM_SERVICE_ENDPOINT_READ_TIMEOUT;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import com.google.common.collect.Maps;
+import eu.dnetlib.iis.referenceextraction.patent.schemas.ImportedPatent;
+import eu.dnetlib.iis.wf.referenceextraction.FacadeContentRetriever;
+import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
 
-import org.junit.Test;
+import static eu.dnetlib.iis.wf.referenceextraction.patent.OpenPatentWebServiceFacadeFactory.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-import com.google.common.collect.Maps;
-
-/**
- * {@link OpenPatentWebServiceFacadeFactory} test class.
- * @author mhorst
- *
- */
 public class OpenPatentWebServiceFacadeFactoryTest {
 
     @Test
@@ -38,14 +21,14 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         Map<String, String> conf = prepareValidConfiguration();
         
         // execute
-        PatentServiceFacade service = factory.instantiate(conf);
+        FacadeContentRetriever<ImportedPatent, String> service = factory.instantiate(conf);
         
         // assert
         assertNotNull(service);
         assertTrue(service instanceof OpenPatentWebServiceFacade);
     }
     
-    @Test(expected = NumberFormatException.class)
+    @Test
     public void testCreateInvalidConnectionTimeout() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -53,10 +36,10 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.put(PARAM_SERVICE_ENDPOINT_CONNECTION_TIMEOUT, "non-int");
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(NumberFormatException.class, () -> factory.instantiate(conf));
     }
     
-    @Test(expected = NumberFormatException.class)
+    @Test
     public void testCreateInvalidReadTimeout() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -64,10 +47,10 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.put(PARAM_SERVICE_ENDPOINT_READ_TIMEOUT, "non-int");
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(NumberFormatException.class, () -> factory.instantiate(conf));
     }
     
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testCreateMissingConsumerKey() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -75,10 +58,10 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.remove(PARAM_CONSUMER_KEY);
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(IllegalArgumentException.class, () -> factory.instantiate(conf));
     }
     
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testCreateMissingAuthHost() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -86,10 +69,10 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.remove(PARAM_SERVICE_ENDPOINT_AUTH_HOST);
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(IllegalArgumentException.class, () -> factory.instantiate(conf));
     }
     
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testCreateMissingAuthPort() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -97,10 +80,10 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.remove(PARAM_SERVICE_ENDPOINT_AUTH_PORT);
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(IllegalArgumentException.class, () -> factory.instantiate(conf));
     }
     
-    @Test(expected = NumberFormatException.class)
+    @Test
     public void testCreateInvalidAuthPort() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -108,10 +91,10 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.put(PARAM_SERVICE_ENDPOINT_AUTH_PORT, "non-int");
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(NumberFormatException.class, () -> factory.instantiate(conf));
     }
     
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testCreateMissingAuthScheme() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -119,10 +102,11 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.remove(PARAM_SERVICE_ENDPOINT_AUTH_SCHEME);
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(IllegalArgumentException.class, () -> factory.instantiate(conf));
+
     }
     
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testCreateMissingAuthUriRoot() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -130,10 +114,10 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.remove(PARAM_SERVICE_ENDPOINT_AUTH_URI_ROOT);
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(IllegalArgumentException.class, () -> factory.instantiate(conf));
     }
     
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testCreateMissingOpsHost() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -141,10 +125,10 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.remove(PARAM_SERVICE_ENDPOINT_OPS_HOST);
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(IllegalArgumentException.class, () -> factory.instantiate(conf));
     }
     
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testCreateMissingOpsPort() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -152,10 +136,10 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.remove(PARAM_SERVICE_ENDPOINT_OPS_PORT);
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(IllegalArgumentException.class, () -> factory.instantiate(conf));
     }
     
-    @Test(expected = NumberFormatException.class)
+    @Test
     public void testCreateInvalidOpsPort() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -163,10 +147,10 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.put(PARAM_SERVICE_ENDPOINT_OPS_PORT, "non-int");
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(NumberFormatException.class, () -> factory.instantiate(conf));
     }
     
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testCreateMissingOpsScheme() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -174,10 +158,10 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.remove(PARAM_SERVICE_ENDPOINT_OPS_SCHEME);
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(IllegalArgumentException.class, () -> factory.instantiate(conf));
     }
     
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testCreateMissingOpsUriRoot() {
         // given
         OpenPatentWebServiceFacadeFactory factory = new OpenPatentWebServiceFacadeFactory();
@@ -185,7 +169,7 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         conf.remove(PARAM_SERVICE_ENDPOINT_OPS_URI_ROOT);
         
         // execute
-        factory.instantiate(conf);
+        assertThrows(IllegalArgumentException.class, () -> factory.instantiate(conf));
     }
     
     @Test
@@ -196,7 +180,7 @@ public class OpenPatentWebServiceFacadeFactoryTest {
         
         // execute
         String credential = OpenPatentWebServiceFacadeFactory.buildCredential(key, secret);
-        
+
         // assert
         assertNotNull(credential);
         assertEquals(Base64.getEncoder().encodeToString((key+':'+secret).getBytes(StandardCharsets.UTF_8)), credential);

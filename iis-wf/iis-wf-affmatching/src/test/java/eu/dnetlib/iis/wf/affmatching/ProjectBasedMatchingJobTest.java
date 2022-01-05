@@ -1,15 +1,9 @@
 package eu.dnetlib.iis.wf.affmatching;
 
-import java.io.File;
-import java.io.IOException;
-
-import org.apache.commons.io.FileUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-
-import com.google.common.io.Files;
-
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
+import eu.dnetlib.iis.common.SlowTest;
+import eu.dnetlib.iis.common.java.io.DataStore;
+import eu.dnetlib.iis.common.java.io.HdfsTestUtils;
 import eu.dnetlib.iis.common.schemas.ReportEntry;
 import eu.dnetlib.iis.common.utils.AvroAssertTestUtil;
 import eu.dnetlib.iis.common.utils.AvroTestUtils;
@@ -18,20 +12,30 @@ import eu.dnetlib.iis.importer.schemas.Project;
 import eu.dnetlib.iis.importer.schemas.ProjectToOrganization;
 import eu.dnetlib.iis.referenceextraction.project.schemas.DocumentToProject;
 import eu.dnetlib.iis.wf.affmatching.model.MatchedOrganization;
+import org.apache.hadoop.conf.Configuration;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import pl.edu.icm.sparkutils.test.SparkJob;
 import pl.edu.icm.sparkutils.test.SparkJobBuilder;
 import pl.edu.icm.sparkutils.test.SparkJobExecutor;
 
+import java.io.File;
+import java.io.IOException;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 /**
 * @author mhorst
 */
-
+@SlowTest
 public class ProjectBasedMatchingJobTest {
     
     
     private SparkJobExecutor executor = new SparkJobExecutor();
-    
-    private File workingDir;
+
+    @TempDir
+    public File workingDir;
     
     private String inputInferredDocProjDirPath;
     
@@ -50,11 +54,9 @@ public class ProjectBasedMatchingJobTest {
     private String outputReportPath;
     
     
-    @Before
+    @BeforeEach
     public void before() {
         
-        workingDir = Files.createTempDir();
-
         inputInferredDocProjDirPath = workingDir + "/projectbased_matching/input/doc_proj_inferred";
         inputDocProjDirPath = workingDir + "/projectbased_matching/input/doc_proj";
         inputProjOrgDirPath = workingDir + "/projectbased_matching/input/proj_org";
@@ -64,15 +66,6 @@ public class ProjectBasedMatchingJobTest {
         
     }
     
-    
-    @After
-    public void after() throws IOException {
-        
-        FileUtils.deleteDirectory(workingDir);
-        
-    }
-    
-    
     //------------------------ TESTS --------------------------
     
     @Test
@@ -81,13 +74,19 @@ public class ProjectBasedMatchingJobTest {
         
         // given
 
-        String jsonInputInferredDocProjPath = "src/test/resources/data/projectbased/input/docProjInferred.json";
-        String jsonInputDocProjPath = "src/test/resources/data/projectbased/input/docProj.json";
-        String jsonInputProjOrgPath = "src/test/resources/data/projectbased/input/projOrg.json";
-        String jsonInputProjectPath = "src/test/resources/data/projectbased/input/project.json";
-        
-        String jsonOutputPath = "src/test/resources/data/projectbased/expectedOutput/matchedOrganizations.json";
-        String jsonOutputReportPath = "src/test/resources/data/projectbased/expectedOutput/report.json";
+        String jsonInputInferredDocProjPath = ClassPathResourceProvider
+                .getResourcePath("data/projectbased/input/docProjInferred.json");
+        String jsonInputDocProjPath = ClassPathResourceProvider
+                .getResourcePath("data/projectbased/input/docProj.json");
+        String jsonInputProjOrgPath = ClassPathResourceProvider
+                .getResourcePath("data/projectbased/input/projOrg.json");
+        String jsonInputProjectPath = ClassPathResourceProvider
+                .getResourcePath("data/projectbased/input/project.json");
+
+        String jsonOutputPath = ClassPathResourceProvider
+                .getResourcePath("data/projectbased/expectedOutput/matchedOrganizations.json");
+        String jsonOutputReportPath = ClassPathResourceProvider
+                .getResourcePath("data/projectbased/expectedOutput/report.json");
         
         
         AvroTestUtils.createLocalAvroDataStore(
@@ -141,6 +140,8 @@ public class ProjectBasedMatchingJobTest {
         
         // assert
         AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputDirPath, jsonOutputPath, MatchedOrganization.class);
+        assertEquals(1,
+                HdfsTestUtils.countFiles(new Configuration(), outputReportPath, DataStore.AVRO_FILE_EXT));
         AvroAssertTestUtil.assertEqualsWithJsonIgnoreOrder(outputReportPath, jsonOutputReportPath, ReportEntry.class);
 
     }

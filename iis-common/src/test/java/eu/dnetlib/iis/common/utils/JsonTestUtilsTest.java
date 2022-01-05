@@ -1,12 +1,13 @@
 package eu.dnetlib.iis.common.utils;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
+import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
 
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * @author mhorst
@@ -14,8 +15,10 @@ import org.junit.Test;
  */
 public class JsonTestUtilsTest {
 
-    private final String jsonInputFile = "src/test/resources/eu/dnetlib/iis/common/utils/data/input.json";
-    private final String jsonInput2File = "src/test/resources/eu/dnetlib/iis/common/utils/data/input2.json";
+    private final String jsonInputFile = ClassPathResourceProvider
+            .getResourcePath("eu/dnetlib/iis/common/utils/data/input.json");
+    private final String jsonInput2File = ClassPathResourceProvider
+            .getResourcePath("eu/dnetlib/iis/common/utils/data/input2.json");
 
     private static final class DocumentToProject {
 

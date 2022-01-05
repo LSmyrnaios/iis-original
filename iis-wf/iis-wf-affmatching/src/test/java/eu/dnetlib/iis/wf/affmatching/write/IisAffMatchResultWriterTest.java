@@ -1,40 +1,33 @@
 package eu.dnetlib.iis.wf.affmatching.write;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
-import java.util.List;
-
+import eu.dnetlib.iis.common.schemas.ReportEntry;
+import eu.dnetlib.iis.wf.affmatching.model.AffMatchResult;
+import eu.dnetlib.iis.wf.affmatching.model.MatchedOrganization;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
-
-import eu.dnetlib.iis.common.schemas.ReportEntry;
-import eu.dnetlib.iis.wf.affmatching.model.AffMatchResult;
-import eu.dnetlib.iis.wf.affmatching.model.MatchedOrganization;
+import org.mockito.junit.jupiter.MockitoExtension;
 import pl.edu.icm.sparkutils.avro.SparkAvroSaver;
 import scala.Tuple2;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /**
 * @author Łukasz Dumiszewski
 */
 
-@RunWith(MockitoJUnitRunner.class)
+@ExtendWith(MockitoExtension.class)
 public class IisAffMatchResultWriterTest {
 
     
@@ -75,7 +68,7 @@ public class IisAffMatchResultWriterTest {
     private JavaRDD<MatchedOrganization> distinctMatchedOrganizationsValues;
     
     @Mock
-    private JavaRDD<MatchedOrganization> distinctMatchedOrganizationsValuesCoalesce;
+    private JavaRDD<MatchedOrganization> distinctMatchedOrganizationsValuesRepartition;
  
     @Mock
     private List<ReportEntry> reportEntries;
@@ -104,40 +97,40 @@ public class IisAffMatchResultWriterTest {
     //------------------------ TESTS --------------------------
     
     
-    @Test(expected = NullPointerException.class)
+    @Test
     public void write_sc_null() {
         
         // execute
-        
-        writer.write(null, affMatchResults, "/output", "/report", 1);
+        assertThrows(NullPointerException.class, () ->
+                writer.write(null, affMatchResults, "/output", "/report", 1));
         
     }
     
-    @Test(expected = NullPointerException.class)
+    @Test
     public void write_matchedAffOrgs_null() {
         
         // execute
-        
-        writer.write(sc, null, "/output", "/report", 1);
+        assertThrows(NullPointerException.class, () ->
+                writer.write(sc, null, "/output", "/report", 1));
         
     }
     
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void write_outputPath_blank() {
         
         // execute
-        
-        writer.write(sc, affMatchResults, "  ", "/report", 1);
+        assertThrows(IllegalArgumentException.class, () ->
+                writer.write(sc, affMatchResults, "  ", "/report", 1));
         
     }
     
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void write_outputReportPath_blank() {
         
         // execute
-        
-        writer.write(sc, affMatchResults, "/output", " ", 1);
+        assertThrows(IllegalArgumentException.class, () ->
+                writer.write(sc, affMatchResults, "/output", " ", 1));
         
     }
     
@@ -153,19 +146,19 @@ public class IisAffMatchResultWriterTest {
         doReturn(matchedOrganizationsDocOrgIdKey).when(matchedOrganizations).keyBy(any());
         when(matchedOrganizationsDocOrgIdKey.reduceByKey(any())).thenReturn(distinctMatchedOrganizations);
         when(distinctMatchedOrganizations.values()).thenReturn(distinctMatchedOrganizationsValues);
-        when(distinctMatchedOrganizationsValues.coalesce(1)).thenReturn(distinctMatchedOrganizationsValuesCoalesce);
+        when(distinctMatchedOrganizationsValues.repartition(2)).thenReturn(distinctMatchedOrganizationsValuesRepartition);
         when(reportGenerator.generateReport(distinctMatchedOrganizationsValues)).thenReturn(reportEntries);
-        when(sc.parallelize(reportEntries)).thenReturn(rddReportEntries);
+        when(sc.parallelize(reportEntries, 1)).thenReturn(rddReportEntries);
         
         
         // execute
         
-        writer.write(sc, affMatchResults, outputPath, outputReportPath, 1);
+        writer.write(sc, affMatchResults, outputPath, outputReportPath, 2);
         
         
         // assert
         
-        verify(sparkAvroSaver).saveJavaRDD(distinctMatchedOrganizationsValuesCoalesce, MatchedOrganization.SCHEMA$, outputPath);
+        verify(sparkAvroSaver).saveJavaRDD(distinctMatchedOrganizationsValuesRepartition, MatchedOrganization.SCHEMA$, outputPath);
         verify(sparkAvroSaver).saveJavaRDD(rddReportEntries, ReportEntry.SCHEMA$, outputReportPath);
         
         verify(affMatchResults).map(convertFunction.capture());
@@ -203,7 +196,7 @@ public class IisAffMatchResultWriterTest {
         // assert
         
         assertNotNull(retMatchedAff);
-        assertTrue(matchedAff == retMatchedAff);
+        assertSame(matchedAff, retMatchedAff);
         
     }
     
@@ -239,6 +232,6 @@ public class IisAffMatchResultWriterTest {
         // assert
         
         assertNotNull(retMatchedOrg);
-        assertTrue(retMatchedOrg == newMatchedOrg);
+        assertSame(retMatchedOrg, newMatchedOrg);
     }
 }

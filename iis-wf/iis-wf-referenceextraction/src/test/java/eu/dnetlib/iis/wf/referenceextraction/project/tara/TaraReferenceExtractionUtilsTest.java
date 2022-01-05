@@ -1,21 +1,18 @@
 package eu.dnetlib.iis.wf.referenceextraction.project.tara;
 
+import eu.dnetlib.iis.common.spark.TestWithSharedSparkSession;
 import eu.dnetlib.iis.common.spark.avro.AvroDataFrameSupport;
 import eu.dnetlib.iis.common.spark.pipe.PipeExecutionEnvironment;
 import eu.dnetlib.iis.metadataextraction.schemas.DocumentText;
 import eu.dnetlib.iis.referenceextraction.project.schemas.DocumentToProject;
 import eu.dnetlib.iis.transformers.metadatamerger.schemas.ExtractedDocumentMetadataMergedWithOriginal;
 import eu.dnetlib.iis.transformers.metadatamerger.schemas.PublicationType;
-import org.apache.spark.SparkConf;
 import org.apache.spark.SparkFiles;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
-import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.avro.SchemaConverters;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,31 +25,15 @@ import java.util.stream.Collectors;
 
 import static eu.dnetlib.iis.wf.referenceextraction.project.tara.TaraReferenceExtractionUtils.buildDocumentMetadata;
 import static eu.dnetlib.iis.wf.referenceextraction.project.tara.TaraReferenceExtractionUtils.runReferenceExtraction;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
-public class TaraReferenceExtractionUtilsTest {
-
-    private static SparkSession spark;
-
-    @BeforeClass
-    public static void beforeClass() {
-        SparkConf conf = new SparkConf();
-        conf.setMaster("local");
-        conf.set("spark.driver.host", "localhost");
-        conf.setAppName(TaraReferenceExtractionUtilsTest.class.getSimpleName());
-        spark = SparkSession.builder().config(conf).getOrCreate();
-    }
-
-    @AfterClass
-    public static void afterClass() {
-        spark.stop();
-    }
+public class TaraReferenceExtractionUtilsTest extends TestWithSharedSparkSession {
 
     @Test
     public void buildDocumentMetadataShouldRunProperly() {
         // given
-        AvroDataFrameSupport avroDataFrameSupport = new AvroDataFrameSupport(spark);
+        AvroDataFrameSupport avroDataFrameSupport = new AvroDataFrameSupport(spark());
         Dataset<Row> documentTextDF = avroDataFrameSupport.createDataFrame(
                 Arrays.asList(
                         createDocumentText("docId-1", "text-1"),
@@ -83,20 +64,20 @@ public class TaraReferenceExtractionUtilsTest {
     @Test
     public void shouldRunReferenceExtraction() throws IOException {
         // given
-        Dataset<Row> documentMetadataDF = spark.createDataFrame(
+        Dataset<Row> documentMetadataDF = spark().createDataFrame(
                 Collections.singletonList(
                         createDocumentMetadata("id-1", "text-1")
                 ),
                 TaraReferenceExtractionJob.DOCUMENT_METADATA_SCHEMA);
         PipeExecutionEnvironment pipeExecutionEnvironment = () -> {
             Path scriptWithInputCheck = createTestScriptWithInputCheck();
-            spark.sparkContext().addFile(scriptWithInputCheck.toString());
+            spark().sparkContext().addFile(scriptWithInputCheck.toString());
             return String.format("bash %s/%s", SparkFiles.getRootDirectory(),
                     scriptWithInputCheck.getFileName().toString());
         };
 
         // when
-        Dataset<Row> resultDF = runReferenceExtraction(spark, documentMetadataDF, pipeExecutionEnvironment);
+        Dataset<Row> resultDF = runReferenceExtraction(spark(), documentMetadataDF, pipeExecutionEnvironment);
 
         // then
         assertEquals(SchemaConverters.toSqlType(DocumentToProject.SCHEMA$).dataType().asNullable(),

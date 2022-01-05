@@ -1,20 +1,18 @@
 package eu.dnetlib.iis.wf.export.actionmanager.module;
 
-import static eu.dnetlib.iis.wf.export.actionmanager.ExportWorkflowRuntimeParameters.EXPORT_DOCUMENTSSIMILARITY_THRESHOLD;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
-import java.util.List;
-
-import org.junit.Test;
-
 import com.google.protobuf.InvalidProtocolBufferException;
-
 import eu.dnetlib.dhp.schema.action.AtomicAction;
 import eu.dnetlib.dhp.schema.oaf.KeyValue;
 import eu.dnetlib.dhp.schema.oaf.Relation;
 import eu.dnetlib.iis.documentssimilarity.schemas.DocumentSimilarity;
+import eu.dnetlib.iis.wf.export.actionmanager.OafConstants;
+
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static eu.dnetlib.iis.wf.export.actionmanager.ExportWorkflowRuntimeParameters.EXPORT_DOCUMENTSSIMILARITY_THRESHOLD;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * @author mhorst
@@ -67,13 +65,13 @@ public class DocumentSimilarityActionBuilderModuleFactoryTest extends AbstractAc
         assertNotNull(action);
         assertEquals(Relation.class, action.getClazz());
         assertOaf(action.getPayload(), docId, otherDocId, similarity, 
-                "hasAmongTopNSimilarDocuments");
+                OafConstants.REL_CLASS_HAS_AMONG_TOP_N);
 //      checking backward relation
         action = actions.get(1);
         assertNotNull(action);
         assertEquals(Relation.class, action.getClazz());
         assertOaf(action.getPayload(), otherDocId, docId, similarity, 
-                "isAmongTopNSimilarDocuments");
+                OafConstants.REL_CLASS_IS_AMONG_TOP_N);
     }
     
     // ----------------------- PRIVATE --------------------------

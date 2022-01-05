@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
 
+import eu.dnetlib.iis.common.ClassPathResourceProvider;
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -23,7 +24,7 @@ import eu.dnetlib.iis.common.java.io.FileSystemPath;
 import eu.dnetlib.iis.common.java.io.SequenceFileTextValueReader;
 import eu.dnetlib.iis.common.java.porttype.AnyPortType;
 import eu.dnetlib.iis.common.java.porttype.PortType;
-import eu.dnetlib.iis.wf.export.actionmanager.entity.AtomicActionSerDeUtils;
+import eu.dnetlib.iis.wf.export.actionmanager.AtomicActionDeserializationUtils;
 
 /**
  * Sequence file testing consumer. Expects {@link Text} values at input.
@@ -91,7 +92,7 @@ public class TestingConsumer implements Process {
 
 			while (it.hasNext()) {
 			    String serializedAction = it.next().toString();
-				AtomicAction<? extends Oaf> action = AtomicActionSerDeUtils.deserializeAction(serializedAction);
+				AtomicAction<? extends Oaf> action = AtomicActionDeserializationUtils.deserializeAction(serializedAction);
 				actionsCount++;
 				if (actionsCount > recordsSpecs.length) {
 					throw new Exception("got more records than expected: " + "unable to verify record no " + actionsCount
@@ -112,7 +113,7 @@ public class TestingConsumer implements Process {
 	private void evaluateExpectations(String currentSpecLocation, AtomicAction<? extends Oaf> action, String serializedAction) throws Exception {
         log.info("output specification location: " + currentSpecLocation);
         Properties specProps = new OrderedProperties();
-        specProps.load(TestingConsumer.class.getResourceAsStream(currentSpecLocation.trim()));
+		specProps.load(ClassPathResourceProvider.getResourceInputStream(currentSpecLocation.trim()));
         Iterator<Entry<Object,Object>> propsIter = specProps.entrySet().iterator();
         while (propsIter.hasNext()) {
             Entry<Object,Object> entry = propsIter.next();

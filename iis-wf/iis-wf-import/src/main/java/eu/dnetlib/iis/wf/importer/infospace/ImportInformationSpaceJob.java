@@ -1,10 +1,15 @@
 package eu.dnetlib.iis.wf.importer.infospace;
 
 import static eu.dnetlib.iis.common.WorkflowRuntimeParameters.UNDEFINED_NONEMPTY_VALUE;
+import static eu.dnetlib.iis.common.spark.SparkSessionSupport.*;
+import static eu.dnetlib.iis.wf.importer.infospace.ImportInformationSpaceJobUtils.*;
 
 import java.util.Objects;
 import java.util.Optional;
 
+import eu.dnetlib.iis.wf.importer.infospace.truncator.AvroTruncator;
+import eu.dnetlib.iis.wf.importer.infospace.truncator.DataSetReferenceAvroTruncator;
+import eu.dnetlib.iis.wf.importer.infospace.truncator.DocumentMetadataAvroTruncator;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
@@ -102,7 +107,7 @@ public class ImportInformationSpaceJob {
 
     private static final String COUNTER_READ_DOC_PROJ_REFERENCE = "import.infoSpace.docProjectReference";
     
-    private static final String COUNTER_READ_DOC_DEDUP_DOC_REFERENCE = "import.infoSpace.docDedupDocReference";
+    private static final String COUNTER_READ_DOC_IDENTIFIERMAPPING_DOC_REFERENCE = "import.infoSpace.docIdentifierMappingDocReference";
     
     private static final String COUNTER_READ_PROJ_ORG_REFERENCE = "import.infoSpace.projectOrganizationReference";
 
@@ -116,34 +121,31 @@ public class ImportInformationSpaceJob {
 
         SparkConf conf = SparkConfHelper.withKryo(new SparkConf());
         conf.registerKryoClasses(OafModelUtils.provideOafClasses());
-        
-        SparkSession session = null;
-        boolean isSparkSessionManagedOutside = params.sparkSessionManagedOutside != null
-                ? params.sparkSessionManagedOutside
-                : false;
-        
-        try {
-            session = SparkSession.builder().config(conf).getOrCreate();
-            JavaSparkContext sc = JavaSparkContext.fromSparkContext(session.sparkContext()); 
-            
+
+        runWithSparkSession(conf, params.isSparkSessionShared, session -> {
+            JavaSparkContext sc = JavaSparkContext.fromSparkContext(session.sparkContext());
+
             HdfsUtils.remove(sc.hadoopConfiguration(), params.outputPath);
             HdfsUtils.remove(sc.hadoopConfiguration(), params.outputReportPath);
-            
+
             // initializing Oaf model converters
             DataInfoBasedApprover dataInfoBasedApprover = buildApprover(
                     params.skipDeletedByInference, params.trustLevelThreshold, params.inferenceProvenanceBlacklist);
-            
+
             OafEntityToAvroConverter<Result, DocumentMetadata> documentConverter = new DocumentMetadataConverter(dataInfoBasedApprover);
             OafEntityToAvroConverter<Result, DataSetReference>  datasetConverter = new DatasetMetadataConverter(dataInfoBasedApprover);
             OafEntityToAvroConverter<Organization, eu.dnetlib.iis.importer.schemas.Organization> organizationConverter = new OrganizationConverter();
             OafEntityToAvroConverter<Project, eu.dnetlib.iis.importer.schemas.Project> projectConverter = new ProjectConverter();
-            
+
             OafRelToAvroConverter<ProjectToOrganization> projectOrganizationConverter = new ProjectToOrganizationRelationConverter();
             OafRelToAvroConverter<DocumentToProject> docProjectConverter = new DocumentToProjectRelationConverter();
             OafRelToAvroConverter<IdentifierMapping> deduplicationMappingConverter = new DeduplicationMappingConverter();
-            
+
+            DocumentMetadataAvroTruncator documentMetadataAvroTruncator = createDocumentMetadataAvroTruncator(params);
+            DataSetReferenceAvroTruncator dataSetReferenceAvroTruncator = createDataSetReferenceAvroTruncator(params);
+
             String inputFormat = params.inputFormat;
-       
+
             JavaRDD<eu.dnetlib.dhp.schema.oaf.Organization> sourceOrganization = readGraphTable(session,
                     params.inputRootPath + "/organization", eu.dnetlib.dhp.schema.oaf.Organization.class, inputFormat);
             JavaRDD<eu.dnetlib.dhp.schema.oaf.Project> sourceProject = readGraphTable(session,
@@ -159,43 +161,70 @@ public class ImportInformationSpaceJob {
             JavaRDD<eu.dnetlib.dhp.schema.oaf.Relation> sourceRelation = readGraphTable(session,
                     params.inputRootPath + "/relation", eu.dnetlib.dhp.schema.oaf.Relation.class, inputFormat);
             sourceRelation.persist(CACHE_STORAGE_DEFAULT_LEVEL);
-            
+
             // handling entities
             JavaRDD<eu.dnetlib.dhp.schema.oaf.Dataset> filteredDataset = sourceDataset.filter(dataInfoBasedApprover::approve);
             filteredDataset.persist(CACHE_STORAGE_DEFAULT_LEVEL);
 
-            JavaRDD<eu.dnetlib.iis.importer.schemas.DocumentMetadata> docMeta = parseToDocMetaAvro(filteredDataset,
-                    sourcePublication, sourceSoftware, sourceOtherResearchProduct, dataInfoBasedApprover, documentConverter);
-            JavaRDD<eu.dnetlib.iis.importer.schemas.DataSetReference> dataset = parseResultToAvro(filteredDataset, datasetConverter); 
+            JavaRDD<eu.dnetlib.iis.importer.schemas.DocumentMetadata> docMeta = truncateAvro(parseToDocMetaAvro(filteredDataset,
+                    sourcePublication, sourceSoftware, sourceOtherResearchProduct, dataInfoBasedApprover, documentConverter),
+                    documentMetadataAvroTruncator);
+            JavaRDD<eu.dnetlib.iis.importer.schemas.DataSetReference> dataset = truncateAvro(parseResultToAvro(filteredDataset,
+                    datasetConverter), dataSetReferenceAvroTruncator);
             JavaRDD<eu.dnetlib.iis.importer.schemas.Project> project = filterAndParseToAvro(sourceProject, dataInfoBasedApprover, projectConverter);
             JavaRDD<eu.dnetlib.iis.importer.schemas.Organization> organization = filterAndParseToAvro(sourceOrganization, dataInfoBasedApprover, organizationConverter);
-            
+
             // handling relations
-            JavaRDD<DocumentToProject> docProjRelation = filterAndParseRelationToAvro(sourceRelation, dataInfoBasedApprover, docProjectConverter, 
+            JavaRDD<DocumentToProject> docProjRelation = filterAndParseRelationToAvro(sourceRelation, dataInfoBasedApprover, docProjectConverter,
                     REL_TYPE_RESULT_PROJECT, SUBREL_TYPE_OUTCOME, REL_NAME_IS_PRODUCED_BY);
-            JavaRDD<ProjectToOrganization> projOrgRelation = filterAndParseRelationToAvro(sourceRelation, dataInfoBasedApprover, projectOrganizationConverter, 
-                    REL_TYPE_PROJECT_ORGANIZATION, SUBREL_TYPE_PARTICIPATION, REL_NAME_HAS_PARTICIPANT); 
-            JavaRDD<IdentifierMapping> dedupRelation = filterAndParseRelationToAvro(sourceRelation, dataInfoBasedApprover, deduplicationMappingConverter, 
-                    REL_TYPE_RESULT_RESULT, SUBREL_TYPE_DEDUP, REL_NAME_MERGES); 
-            
-            storeInOutput(sc, docMeta, dataset, project, organization, docProjRelation, projOrgRelation, dedupRelation, params);
-            
-        } finally {
-            if (Objects.nonNull(session) && !isSparkSessionManagedOutside) {
-                session.stop();
-            }
-        }
+            JavaRDD<ProjectToOrganization> projOrgRelation = filterAndParseRelationToAvro(sourceRelation, dataInfoBasedApprover, projectOrganizationConverter,
+                    REL_TYPE_PROJECT_ORGANIZATION, SUBREL_TYPE_PARTICIPATION, REL_NAME_HAS_PARTICIPANT);
+
+            JavaRDD<IdentifierMapping> identifierMapping = produceGraphIdToObjectStoreIdMapping(sourceDataset, sourceOtherResearchProduct,
+                    sourcePublication, sourceSoftware, dataInfoBasedApprover, session);
+
+            storeInOutput(sc, docMeta, dataset, project, organization, docProjRelation, projOrgRelation, identifierMapping, params);
+        });
     }
-    
+
     /**
-     * Parses given set of RDDs conveying various {@link Result} entities into a single RDD with {@link DocumentMetadata} records.
+     * Creates a {@link DocumentMetadataAvroTruncator} from job parameters.
+     */
+    private static DocumentMetadataAvroTruncator createDocumentMetadataAvroTruncator(ImportInformationSpaceJobParameters params) {
+        return DocumentMetadataAvroTruncator.newBuilder()
+                .setMaxAbstractLength(params.maxDescriptionLength)
+                .setMaxTitleLength(params.maxTitleLength)
+                .setMaxAuthorsSize(params.maxAuthorsSize)
+                .setMaxAuthorFullnameLength(params.maxAuthorFullnameLength)
+                .setMaxKeywordsSize(params.maxKeywordsSize)
+                .setMaxKeywordLength(params.maxKeywordLength)
+                .build();
+    }
+
+    /**
+     * Creates a {@link DataSetReferenceAvroTruncator} from job parameters.
+     */
+    private static DataSetReferenceAvroTruncator createDataSetReferenceAvroTruncator(ImportInformationSpaceJobParameters params) {
+        return DataSetReferenceAvroTruncator.newBuilder()
+                .setMaxCreatorNamesSize(params.maxAuthorsSize)
+                .setMaxCreatorNameLength(params.maxAuthorFullnameLength)
+                .setMaxTitlesSize(params.maxTitlesSize)
+                .setMaxTitleLength(params.maxTitleLength)
+                .setMaxDescriptionLength(params.maxDescriptionLength)
+                .build();
+    }
+
+    /**
+     * Parses given set of RDDs conveying various {@link Result} entities into a single RDD with {@link DocumentMetadata} records,
+     * truncating any large entries.
      */
     private static JavaRDD<eu.dnetlib.iis.importer.schemas.DocumentMetadata> parseToDocMetaAvro(
             JavaRDD<eu.dnetlib.dhp.schema.oaf.Dataset> filteredDataset,
             JavaRDD<eu.dnetlib.dhp.schema.oaf.Publication> sourcePublication,
             JavaRDD<eu.dnetlib.dhp.schema.oaf.Software> sourceSoftware,
             JavaRDD<eu.dnetlib.dhp.schema.oaf.OtherResearchProduct> sourceOtherResearchProduct,
-            ResultApprover resultApprover, OafEntityToAvroConverter<Result, DocumentMetadata> documentConverter) {
+            ResultApprover resultApprover,
+            OafEntityToAvroConverter<Result, DocumentMetadata> documentConverter) {
         JavaRDD<eu.dnetlib.iis.importer.schemas.DocumentMetadata> publicationDocMeta = filterAndParseResultToAvro(
                 sourcePublication, resultApprover, documentConverter);
 
@@ -208,7 +237,10 @@ public class ImportInformationSpaceJob {
         JavaRDD<eu.dnetlib.iis.importer.schemas.DocumentMetadata> datasetDocMeta = parseResultToAvro(
                 filteredDataset, documentConverter);
 
-        return publicationDocMeta.union(softwareDocMeta).union(orpDocMeta).union(datasetDocMeta);
+        return publicationDocMeta
+                .union(softwareDocMeta)
+                .union(orpDocMeta)
+                .union(datasetDocMeta);
     }
     
     /**
@@ -251,6 +283,14 @@ public class ImportInformationSpaceJob {
             String subRelType, String relClass) {
         return source.filter(x -> acceptRelation(x, relType, subRelType, relClass))
                 .filter(x -> resultApprover.approve(x)).map(x -> relationConverter.convert(x));
+    }
+
+    /**
+     * Truncates an avro type using its avro truncator implementation.
+     */
+    private static <T extends SpecificRecord> JavaRDD<T> truncateAvro(JavaRDD<T> rdd,
+                                                                      AvroTruncator<T> truncator) {
+        return rdd.map(truncator::truncate);
     }
 
     /**
@@ -312,7 +352,7 @@ public class ImportInformationSpaceJob {
      */
     private static JavaRDD<ReportEntry> generateReportEntries(JavaSparkContext sparkContext, long docMetaCount,
             long datasetCount, long projectCount, long organizationCount, long docProjCount, long projOrgCount,
-            long dedupDocCount) {
+            long identifierMappingDocCount) {
         return sparkContext.parallelize(Lists.newArrayList(
                 ReportEntryFactory.createCounterReportEntry(COUNTER_READ_DOCMETADATA, docMetaCount),
                 ReportEntryFactory.createCounterReportEntry(COUNTER_READ_DATASET, datasetCount),
@@ -320,7 +360,7 @@ public class ImportInformationSpaceJob {
                 ReportEntryFactory.createCounterReportEntry(COUNTER_READ_ORGANIZATION, organizationCount),
                 ReportEntryFactory.createCounterReportEntry(COUNTER_READ_DOC_PROJ_REFERENCE, docProjCount),
                 ReportEntryFactory.createCounterReportEntry(COUNTER_READ_PROJ_ORG_REFERENCE, projOrgCount),
-                ReportEntryFactory.createCounterReportEntry(COUNTER_READ_DOC_DEDUP_DOC_REFERENCE, dedupDocCount)));
+                ReportEntryFactory.createCounterReportEntry(COUNTER_READ_DOC_IDENTIFIERMAPPING_DOC_REFERENCE, identifierMappingDocCount)), 1);
     }
     
     /**
@@ -332,7 +372,7 @@ public class ImportInformationSpaceJob {
             JavaRDD<eu.dnetlib.iis.importer.schemas.Project> project,
             JavaRDD<eu.dnetlib.iis.importer.schemas.Organization> organization,
             JavaRDD<DocumentToProject> docProjResultRelation, JavaRDD<ProjectToOrganization> projOrgResultRelation,
-            JavaRDD<IdentifierMapping> dedupResultRelation, ImportInformationSpaceJobParameters jobParams) {
+            JavaRDD<IdentifierMapping> identifierMapping, ImportInformationSpaceJobParameters jobParams) {
 
         // caching before calculating counts and writing on HDFS
         docMeta.persist(CACHE_STORAGE_DEFAULT_LEVEL);
@@ -341,11 +381,11 @@ public class ImportInformationSpaceJob {
         organization.persist(CACHE_STORAGE_DEFAULT_LEVEL);
         docProjResultRelation.persist(CACHE_STORAGE_DEFAULT_LEVEL);
         projOrgResultRelation.persist(CACHE_STORAGE_DEFAULT_LEVEL);
-        dedupResultRelation.persist(CACHE_STORAGE_DEFAULT_LEVEL);
+        identifierMapping.persist(CACHE_STORAGE_DEFAULT_LEVEL);
         
         JavaRDD<ReportEntry> reports = generateReportEntries(sparkContext, docMeta.count(), dataset.count(),
                 project.count(), organization.count(), docProjResultRelation.count(), projOrgResultRelation.count(),
-                dedupResultRelation.count());
+                identifierMapping.count());
 
         avroSaver.saveJavaRDD(docMeta, eu.dnetlib.iis.importer.schemas.DocumentMetadata.SCHEMA$,
                 outputPathFor(jobParams.outputPath, jobParams.outputNameDocumentMeta));
@@ -359,8 +399,8 @@ public class ImportInformationSpaceJob {
                 outputPathFor(jobParams.outputPath, jobParams.outputNameDocumentProject));
         avroSaver.saveJavaRDD(projOrgResultRelation, ProjectToOrganization.SCHEMA$,
                 outputPathFor(jobParams.outputPath, jobParams.outputNameProjectOrganization));
-        avroSaver.saveJavaRDD(dedupResultRelation, IdentifierMapping.SCHEMA$,
-                outputPathFor(jobParams.outputPath, jobParams.outputNameDedupMapping));
+        avroSaver.saveJavaRDD(identifierMapping, IdentifierMapping.SCHEMA$,
+                outputPathFor(jobParams.outputPath, jobParams.outputNameIdentifierMapping));
 
         avroSaver.saveJavaRDD(reports, ReportEntry.SCHEMA$, jobParams.outputReportPath);
     }
@@ -372,8 +412,8 @@ public class ImportInformationSpaceJob {
     @Parameters(separators = "=")
     private static class ImportInformationSpaceJobParameters {
 
-        @Parameter(names = "-sparkSessionManagedOutside", required = false)
-        private Boolean sparkSessionManagedOutside;
+        @Parameter(names = "-sharedSparkSession")
+        private Boolean isSparkSessionShared = Boolean.FALSE;
         
         @Parameter(names = "-skipDeletedByInference", required = true)
         private String skipDeletedByInference;
@@ -408,14 +448,35 @@ public class ImportInformationSpaceJob {
         @Parameter(names = "-outputNameProject", required = true)
         private String outputNameProject;
         
-        @Parameter(names = "-outputNameDedupMapping", required = true)
-        private String outputNameDedupMapping;
+        @Parameter(names = "-outputNameIdentifierMapping", required = true)
+        private String outputNameIdentifierMapping;
         
         @Parameter(names = "-outputNameOrganization", required = true)
         private String outputNameOrganization;
         
         @Parameter(names = "-outputNameProjectOrganization", required = true)
         private String outputNameProjectOrganization;
+
+        @Parameter(names = "-maxDescriptionLength", required = true)
+        private Integer maxDescriptionLength;
+
+        @Parameter(names = "-maxTitlesSize", required = true)
+        private Integer maxTitlesSize;
+
+        @Parameter(names = "-maxTitleLength", required = true)
+        private Integer maxTitleLength;
+
+        @Parameter(names = "-maxAuthorsSize", required = true)
+        private Integer maxAuthorsSize;
+
+        @Parameter(names = "-maxAuthorFullnameLength", required = true)
+        private Integer maxAuthorFullnameLength;
+
+        @Parameter(names = "-maxKeywordsSize", required = true)
+        private Integer maxKeywordsSize;
+
+        @Parameter(names = "-maxKeywordLength", required = true)
+        private Integer maxKeywordLength;
     }
     
 }

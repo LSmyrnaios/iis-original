@@ -203,6 +203,11 @@
                 Set to 'a^' by default to guarantee nothing will be matched.
             </description>
         </property>
+        <!-- citation matching related -->
+        <property>
+            <name>citationmatchingFuzzyNumberOfPartitions</name>
+            <description>number of partitions used for rdds with citations and documents read from input files</description>
+        </property>
         <!-- action set id properties -->
         <property>
             <name>export_action_set_id_document_similarities_standard</name>
@@ -275,6 +280,11 @@
             <value>$UNDEFINED$</value>
             <description>action-set identifier of exported data containing patent entities</description>
         </property>
+        <property>
+            <name>export_action_set_id_citation_relations</name>
+            <value>$UNDEFINED$</value>
+            <description>action-set identifier of exported data containing citation relations</description>
+        </property>
         <!-- trust level threshold section -->
         <property>
             <name>export_trust_level_threshold</name>
@@ -310,6 +320,11 @@
             <name>export_trust_level_threshold_matched_doc_organizations</name>
             <value>$UNDEFINED$</value>
             <description>document to organization trust level threshold</description>
+        </property>
+        <property>
+            <name>export_trust_level_threshold_document_referencedDocuments</name>
+            <value>$UNDEFINED$</value>
+            <description>document_referencedDocuments trust level threshold</description>
         </property>
         <!-- -->
         <property>
@@ -414,8 +429,24 @@
             <delete path="${nameNode}${workingDir}" />
             <mkdir path="${nameNode}${workingDir}" />
         </fs>
-        <ok to="copy-version" />
+        <ok to="validate-output" />
         <error to="fail" />
+    </action>
+
+    <action name="validate-output">
+        <fs>
+            <touchz path="${nameNode}${output_remote_location}/validate_output_timestamp"/>
+        </fs>
+        <ok to="validate-output-cleanup"/>
+        <error to="fail"/>
+    </action>
+
+    <action name="validate-output-cleanup">
+        <fs>
+            <delete path="${nameNode}${output_remote_location}/validate_output_timestamp"/>
+        </fs>
+        <ok to="copy-version"/>
+        <error to="fail"/>
     </action>
 
     <action name="copy-version">
@@ -534,8 +565,8 @@
                     <value>project</value>
                 </property>
                 <property>
-                    <name>metadataimport_output_name_dedup_mapping</name>
-                    <value>dedupmapping</value>
+                    <name>metadataimport_output_name_identifier_mapping</name>
+                    <value>identifiermapping</value>
                 </property>
                 <property>
                     <name>metadataimport_output_name_organization</name>
@@ -845,6 +876,10 @@
                     <name>action_set_id_entity_patent</name>
                     <value>${export_action_set_id_entity_patent}</value>
                 </property>
+                <property>
+                    <name>action_set_id_citation_relations</name>
+                    <value>${export_action_set_id_citation_relations}</value>
+                </property>
 
                 <property>
                     <name>trust_level_threshold</name>
@@ -877,6 +912,10 @@
                 <property>
                     <name>trust_level_threshold_document_patent</name>
                     <value>${export_trust_level_threshold_document_patent}</value>
+                </property>
+                <property>
+                    <name>trust_level_threshold_document_referencedDocuments</name>
+                    <value>${export_trust_level_threshold_document_referencedDocuments}</value>
                 </property>
                 <property>
                     <name>documentssimilarity_threshold</name>
@@ -954,7 +993,8 @@
 
     <kill name="fail">
         <message>Unfortunately, the process failed -- error message:
-            [${wf:errorMessage(wf:lastErrorNode())}]</message>
+            [${wf:errorMessage(wf:lastErrorNode())}]
+        </message>
     </kill>
 
     <end name="end" />
