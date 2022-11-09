@@ -338,6 +338,13 @@
                 <version>${iis.spark.version}</version>
                 <scope>provided</scope>
             </dependency>
+            
+            <dependency>
+                <groupId>org.apache.spark</groupId>
+                <artifactId>spark-hive_2.11</artifactId>
+                <version>${iis.spark.version}</version>
+                <scope>provided</scope>
+            </dependency>
 
             <dependency>
                 <groupId>pl.edu.icm.spark-utils</groupId>
@@ -924,12 +931,12 @@
         <snapshotRepository>
             <id>iis-snapshots</id>
             <name>IIS Snapshots</name>
-            <url>http://maven.ceon.pl/artifactory/iis-snapshots/</url>
+            <url>https://maven.ceon.pl/artifactory/iis-snapshots/</url>
             <layout>default</layout>
         </snapshotRepository>
         <repository>
             <id>iis-releases</id>
-            <url>http://maven.ceon.pl/artifactory/iis-releases/</url>
+            <url>https://maven.ceon.pl/artifactory/iis-releases/</url>
         </repository>
     </distributionManagement>
 
@@ -960,7 +967,7 @@
         <iis.spark.version>2.4.0.cloudera2</iis.spark.version>
         <iis.coansys.version>1.10</iis.coansys.version>
 
-        <junit.version>5.4.2</junit.version>
+        <junit.version>5.8.2</junit.version>
         <mockito.version>3.5.13</mockito.version>
 
         <otherExcludedGroups/>
